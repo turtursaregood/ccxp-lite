@@ -250,7 +250,8 @@
 
   function updateAllFramesTheme() {
     try {
-      const topWin = globalThis.top ?? globalThis;
+      // eslint-disable-next-line unicorn/prefer-global-this
+      const topWin = window.top ?? window;
       const traverse = (win: Window) => {
         try {
           applyThemeToDocument(win.document);
