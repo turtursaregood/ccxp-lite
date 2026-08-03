@@ -35,6 +35,7 @@
     page_surface: isLoginPage(document) ? "login" : "inquire",
     sidebar_variant: isLoginPage(document) ? undefined : readSidebarVariant(),
   });
+  ensureThemeDocument(document, isLoginPage(document) ? "login" : "main");
   const loadingState = initializeLoadingSprite(document);
   sharedLib.addCleanupTask(() => {
     if (loadingState) {
@@ -137,7 +138,7 @@
       styleNode.id = LOADING_SPRITE_STYLE_ID;
       styleNode.textContent = `
         html, body {
-          background: #ffffff !important;
+          background: var(--ccxp-lite-bg, #ffffff) !important;
         }
 
         html:not([data-ccxp-lite-loading-ready="true"]) body {
@@ -155,7 +156,7 @@
           inset: 0;
           z-index: 2147483647;
           pointer-events: none;
-          background: #ffffff;
+          background: var(--ccxp-lite-bg, #ffffff);
           opacity: 1;
           transition: opacity 160ms ease;
         }
@@ -169,7 +170,7 @@
           height: 22px;
           transform: translate(-50%, -50%);
           border-radius: 999px;
-          background: #ffffff;
+          background: var(--ccxp-lite-surface, #ffffff);
           box-shadow: 0 0 0 1px rgba(17, 24, 39, 0.08), 0 8px 24px rgba(17, 24, 39, 0.08);
         }
       `;

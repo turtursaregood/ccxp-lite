@@ -147,6 +147,45 @@ html[data-ccxp-lite-scope="main"] [style*="color: rgb(255, 255, 255)" i] {
   color: var(--ccxp-lite-text) !important;
 }
 
+html[data-ccxp-lite-scope="main"] td[style*="color:black" i],
+html[data-ccxp-lite-scope="main"] td[style*="color: black" i],
+html[data-ccxp-lite-scope="main"] td[style*="color:#000000" i],
+html[data-ccxp-lite-scope="main"] td[style*="color: #000000" i],
+html[data-ccxp-lite-scope="main"] td[style*="color:#000" i],
+html[data-ccxp-lite-scope="main"] td[style*="color: #000" i],
+html[data-ccxp-lite-scope="main"] td[style*="color:rgb(0,0,0)" i],
+html[data-ccxp-lite-scope="main"] td[style*="color: rgb(0,0,0)" i],
+html[data-ccxp-lite-scope="main"] td[style*="color:rgb(0, 0, 0)" i],
+html[data-ccxp-lite-scope="main"] td[style*="color: rgb(0, 0, 0)" i],
+html[data-ccxp-lite-scope="main"] a[style*="color:black" i],
+html[data-ccxp-lite-scope="main"] a[style*="color: black" i],
+html[data-ccxp-lite-scope="main"] a[style*="color:#000000" i],
+html[data-ccxp-lite-scope="main"] a[style*="color: #000000" i],
+html[data-ccxp-lite-scope="main"] a[style*="color:#000" i],
+html[data-ccxp-lite-scope="main"] a[style*="color: #000" i],
+html[data-ccxp-lite-scope="main"] a[style*="color:rgb(0,0,0)" i],
+html[data-ccxp-lite-scope="main"] a[style*="color: rgb(0,0,0)" i],
+html[data-ccxp-lite-scope="main"] a[style*="color:rgb(0, 0, 0)" i],
+html[data-ccxp-lite-scope="main"] a[style*="color: rgb(0, 0, 0)" i],
+html[data-ccxp-lite-scope="main"] font[color="#000000" i],
+html[data-ccxp-lite-scope="main"] font[color="#000" i],
+html[data-ccxp-lite-scope="main"] font[color="black" i],
+html[data-ccxp-lite-scope="main"] [color="#000000" i],
+html[data-ccxp-lite-scope="main"] [color="#000" i],
+html[data-ccxp-lite-scope="main"] [color="black" i],
+html[data-ccxp-lite-scope="main"] [style*="color:black" i],
+html[data-ccxp-lite-scope="main"] [style*="color: black" i],
+html[data-ccxp-lite-scope="main"] [style*="color:#000000" i],
+html[data-ccxp-lite-scope="main"] [style*="color: #000000" i],
+html[data-ccxp-lite-scope="main"] [style*="color:#000" i],
+html[data-ccxp-lite-scope="main"] [style*="color: #000" i],
+html[data-ccxp-lite-scope="main"] [style*="color:rgb(0,0,0)" i],
+html[data-ccxp-lite-scope="main"] [style*="color: rgb(0,0,0)" i],
+html[data-ccxp-lite-scope="main"] [style*="color:rgb(0, 0, 0)" i],
+html[data-ccxp-lite-scope="main"] [style*="color: rgb(0, 0, 0)" i] {
+  color: var(--ccxp-lite-text) !important;
+}
+
 html[data-ccxp-lite-scope="main"] td[style*="color:navy" i],
 html[data-ccxp-lite-scope="main"] td[style*="color: navy" i],
 html[data-ccxp-lite-scope="main"] td[style*="color:#0000ff" i],
@@ -184,7 +223,35 @@ html[data-ccxp-lite-scope="main"] [style*="color: #00f" i],
 html[data-ccxp-lite-scope="main"] [style*="color:navy" i],
 html[data-ccxp-lite-scope="main"] [style*="color: navy" i],
 html[data-ccxp-lite-scope="main"] [style*="color:blue" i],
-html[data-ccxp-lite-scope="main"] [style*="color: blue" i] {
+html[data-ccxp-lite-scope="main"] [style*="color: blue" i],
+html[data-ccxp-lite-scope="main"] [style*="color:#000080" i],
+html[data-ccxp-lite-scope="main"] [style*="color: #000080" i],
+html[data-ccxp-lite-scope="main"] [style*="color:#000099" i],
+html[data-ccxp-lite-scope="main"] [style*="color: #000099" i],
+html[data-ccxp-lite-scope="main"] [style*="color:#0000cc" i],
+html[data-ccxp-lite-scope="main"] [style*="color: #0000cc" i],
+html[data-ccxp-lite-scope="main"] [style*="color:#333399" i],
+html[data-ccxp-lite-scope="main"] [style*="color: #333399" i],
+html[data-ccxp-lite-scope="main"] [style*="color:#003399" i],
+html[data-ccxp-lite-scope="main"] [style*="color: #003399" i],
+html[data-ccxp-lite-scope="main"] [style*="color:purple" i],
+html[data-ccxp-lite-scope="main"] [style*="color: purple" i],
+html[data-ccxp-lite-scope="main"] [style*="color:#800080" i],
+html[data-ccxp-lite-scope="main"] [style*="color: #800080" i],
+html[data-ccxp-lite-scope="main"] [style*="color:#990099" i],
+html[data-ccxp-lite-scope="main"] [style*="color: #990099" i],
+html[data-ccxp-lite-scope="main"] font[color="#000080" i],
+html[data-ccxp-lite-scope="main"] font[color="#000099" i],
+html[data-ccxp-lite-scope="main"] font[color="#0000cc" i],
+html[data-ccxp-lite-scope="main"] font[color="#333399" i],
+html[data-ccxp-lite-scope="main"] font[color="#003399" i],
+html[data-ccxp-lite-scope="main"] font[color="purple" i],
+html[data-ccxp-lite-scope="main"] font[color="#990099" i],
+html[data-ccxp-lite-scope="main"] .class1,
+html[data-ccxp-lite-scope="main"] .class2,
+html[data-ccxp-lite-scope="main"] .class3,
+html[data-ccxp-lite-scope="main"] .class4,
+html[data-ccxp-lite-scope="main"] .header {
   color: var(--ccxp-lite-type-info-color) !important;
   font-weight: var(--ccxp-lite-font-weight-strong) !important;
 }
@@ -249,4 +316,73 @@ html[data-ccxp-lite-scope="main"][data-ccxp-lite-sidebar-variant="classic"] {
 
 body.ccxp-lite-main-skin[data-ccxp-lite-sidebar-variant="classic"] {
   scrollbar-gutter: stable both-edges;
+}
+
+/* General dark mode form controls styles */
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"]
+  input:not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="checkbox"]):not(
+    [type="radio"]
+  ),
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] select,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] textarea {
+  background: var(--ccxp-lite-surface-muted) !important;
+  color: var(--ccxp-lite-text) !important;
+  border: 1px solid var(--ccxp-lite-border) !important;
+}
+
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] input[type="submit"],
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] input[type="button"],
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] input[type="reset"],
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] button {
+  background: var(--ccxp-lite-surface) !important;
+  color: var(--ccxp-lite-text) !important;
+  border: 1px solid var(--ccxp-lite-border) !important;
+  cursor: pointer;
+}
+
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] input[type="submit"]:hover,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] input[type="button"]:hover,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] button:hover {
+  background: var(--ccxp-lite-primary-hover-surface) !important;
+  border-color: var(--ccxp-lite-primary) !important;
+}
+
+/* General dark mode page background and text color */
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"],
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] body {
+  background-color: var(--ccxp-lite-bg) !important;
+  color: var(--ccxp-lite-text) !important;
+  color-scheme: dark;
+}
+
+/* Links */
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] a:link,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] a:visited,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] a {
+  color: var(--ccxp-lite-primary) !important;
+}
+
+/* Reset legacy inline bgcolors, background styles, and font colors which ruin dark mode */
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] *[bgcolor],
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] table,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] tr,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] td,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] th,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] font,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] span,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] p,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] ul,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] ol,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] li {
+  background-color: transparent !important;
+  background-image: none !important;
+}
+
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] *[color] {
+  color: inherit !important;
+}
+
+/* Old typography tags */
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] font {
+  color: inherit !important;
 }

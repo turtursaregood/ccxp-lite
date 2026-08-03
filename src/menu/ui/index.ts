@@ -8,7 +8,14 @@
   if (!shared || !sidebarState || !sidebarFavorites || !sidebarData || !sidebarRuntime) {
     return;
   }
-  const { TOKENS, STRINGS, ensureThemeDocument } = shared;
+  const {
+    TOKENS,
+    STRINGS,
+    ensureThemeDocument,
+    getPersistedTheme,
+    setPersistedTheme,
+    updateAllFramesTheme,
+  } = shared;
   const trackEvent = shared.trackEvent ?? (() => undefined);
   const {
     getSidebarUiState,
@@ -241,6 +248,56 @@
       nextState.activeLeaf = undefined;
       nextState.currentCategoryId = "";
       persistSidebarScroll(targetDocument, "root");
+      rerender();
+    });
+    return button;
+  }
+
+  function createThemeSwitch(
+    targetDocument: Document,
+    strings: Readonly<Record<string, string>>,
+    rerender: () => void,
+  ): HTMLElement {
+    const theme = getPersistedTheme();
+    const isDark = theme === "dark";
+    const button = targetDocument.createElement("button");
+    button.type = "button";
+    button.className = "ccxp-lite-sidebar-theme-switch";
+    button.dataset.ccxpLiteThemeMode = theme;
+
+    const labelText = isDark ? strings.themeSwitchToLight : strings.themeSwitchToDark;
+    button.setAttribute("aria-label", labelText);
+    button.setAttribute("title", labelText);
+
+    const iconWrap = targetDocument.createElement("span");
+    iconWrap.className = "ccxp-lite-sidebar-theme-icon";
+    Object.assign(iconWrap.style, {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      width: "20px",
+      height: "20px",
+    });
+
+    iconWrap.append(isDark ? createSunIcon(targetDocument) : createMoonIcon(targetDocument));
+
+    const copy = targetDocument.createElement("span");
+    copy.className = "ccxp-lite-sidebar-theme-label";
+    copy.textContent = strings.themeLabel;
+
+    const status = targetDocument.createElement("span");
+    status.className = "ccxp-lite-sidebar-theme-state";
+    status.setAttribute("aria-hidden", "true");
+    status.textContent = isDark ? strings.themeOn : strings.themeOff;
+
+    button.append(iconWrap);
+    button.append(copy);
+    button.append(status);
+
+    button.addEventListener("click", () => {
+      const nextTheme = theme === "light" ? "dark" : "light";
+      setPersistedTheme(nextTheme);
+      updateAllFramesTheme();
       rerender();
     });
     return button;
@@ -1747,6 +1804,61 @@
     return icon;
   }
 
+  function createSunIcon(targetDocument: Document): SVGElement {
+    const icon = targetDocument.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("class", "ccxp-lite-inline-icon");
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.setAttribute("width", "18");
+    icon.setAttribute("height", "18");
+    icon.setAttribute("fill", "none");
+    icon.setAttribute("stroke", "currentColor");
+    icon.setAttribute("stroke-width", "2");
+    icon.setAttribute("stroke-linecap", "round");
+    icon.setAttribute("stroke-linejoin", "round");
+    icon.setAttribute("aria-hidden", "true");
+
+    const circle = targetDocument.createElementNS("http://www.w3.org/2000/svg", "circle");
+    circle.setAttribute("cx", "12");
+    circle.setAttribute("cy", "12");
+    circle.setAttribute("r", "4");
+    icon.append(circle);
+
+    for (const pathData of [
+      "M12 2v2",
+      "M12 20v2",
+      "m4.93 4.93 1.41 1.41",
+      "m17.66 17.66 1.41 1.41",
+      "M2 12h2",
+      "M20 12h2",
+      "m6.34 17.66-1.41 1.41",
+      "m19.07 4.93-1.41 1.41",
+    ]) {
+      const path = targetDocument.createElementNS("http://www.w3.org/2000/svg", "path");
+      path.setAttribute("d", pathData);
+      icon.append(path);
+    }
+    return icon;
+  }
+
+  function createMoonIcon(targetDocument: Document): SVGElement {
+    const icon = targetDocument.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("class", "ccxp-lite-inline-icon");
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.setAttribute("width", "18");
+    icon.setAttribute("height", "18");
+    icon.setAttribute("fill", "none");
+    icon.setAttribute("stroke", "currentColor");
+    icon.setAttribute("stroke-width", "2");
+    icon.setAttribute("stroke-linecap", "round");
+    icon.setAttribute("stroke-linejoin", "round");
+    icon.setAttribute("aria-hidden", "true");
+
+    const path = targetDocument.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z");
+    icon.append(path);
+    return icon;
+  }
+
   function syncTopLevelFramesetLayout(variant: "classic" | "layered") {
     try {
       const scopeDocument = window.top ? window.top.document : document;
@@ -1770,18 +1882,33 @@
     const isClassic = state.sidebarVariant === "classic";
     const scopeDocument = resolveClassicOverlayScopeDocument(targetDocument, isClassic);
     const topDocument = resolveTopLevelDocument();
-    const button = createSidebarVariantSwitch(scopeDocument, state, strings, rerender);
-    button.dataset.ccxpLiteSidebarLabSwitch = "true";
+
+    const labButton = createSidebarVariantSwitch(scopeDocument, state, strings, rerender);
+    labButton.dataset.ccxpLiteSidebarLabSwitch = "true";
+
+    const themeButton = createThemeSwitch(scopeDocument, strings, rerender);
+    themeButton.dataset.ccxpLiteSidebarThemeSwitch = "true";
+
     removeExistingSidebarVariantSwitches([targetDocument, scopeDocument, topDocument]);
-    Object.assign(button.style, {
+
+    Object.assign(labButton.style, {
       position: "relative",
       pointerEvents: "auto",
     });
+    Object.assign(themeButton.style, {
+      position: "relative",
+      pointerEvents: "auto",
+    });
+
     if (isClassic && scopeDocument !== targetDocument) {
-      getClassicMainFrameOverlayMountNode(scopeDocument).append(button);
+      const mountNode = getClassicMainFrameOverlayMountNode(scopeDocument);
+      mountNode.append(labButton);
+      mountNode.append(themeButton);
       return;
     }
-    getOverlayMountNode(targetDocument).append(button);
+    const mountNode = getOverlayMountNode(targetDocument);
+    mountNode.append(labButton);
+    mountNode.append(themeButton);
   }
 
   function resolveClassicOverlayScopeDocument(
@@ -1845,6 +1972,8 @@
       insetBlockEnd: `calc(var(--ccxp-lite-spacing-lg) + ${blockOffset}px)`,
       zIndex: "2147483646",
       display: "flex",
+      flexDirection: "column",
+      gap: "var(--ccxp-lite-spacing-sm)",
       alignItems: "flex-end",
       justifyContent: "flex-end",
       pointerEvents: "none",
@@ -1857,6 +1986,9 @@
         continue;
       }
       for (const node of scopeDocument.querySelectorAll("[data-ccxp-lite-sidebar-lab-switch]")) {
+        node.remove();
+      }
+      for (const node of scopeDocument.querySelectorAll("[data-ccxp-lite-sidebar-theme-switch]")) {
         node.remove();
       }
       for (const node of scopeDocument.querySelectorAll(".ccxp-lite-sidebar-experiment-copy")) {

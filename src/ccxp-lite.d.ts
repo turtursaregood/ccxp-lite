@@ -174,6 +174,7 @@ declare global {
 
   interface CcxpLiteSharedConstants {
     TOKENS: Record<string, string>;
+    DARK_TOKENS?: Record<string, string>;
     ASSETS: Record<string, string>;
     LOCALIZED_STRINGS: Record<string, Record<string, string>>;
     SIDEBAR_CATEGORIES: readonly CcxpLiteSidebarCategoryDefinition[];
@@ -253,6 +254,10 @@ declare global {
 
   interface CcxpLiteSharedTheme {
     ensureThemeDocument: (targetDocument: Document, scope: string) => boolean;
+    getPersistedTheme: () => "light" | "dark";
+    setPersistedTheme: (theme: "light" | "dark") => void;
+    applyThemeToDocument: (targetDocument: Document) => void;
+    updateAllFramesTheme: () => void;
   }
 
   interface CcxpLiteSharedAnalytics {
@@ -286,6 +291,10 @@ declare global {
     }>;
     ASSETS: Record<string, string>;
     ensureThemeDocument: (targetDocument: Document, scope: string) => boolean;
+    getPersistedTheme: () => "light" | "dark";
+    setPersistedTheme: (theme: "light" | "dark") => void;
+    applyThemeToDocument: (targetDocument: Document) => void;
+    updateAllFramesTheme: () => void;
     getLocalizedStrings: (locale: string) => Readonly<Record<string, string>>;
     rememberLocale: (locale: string | undefined, targetDocument: Document | undefined) => string;
     normalizeLocale: (locale: string) => string;

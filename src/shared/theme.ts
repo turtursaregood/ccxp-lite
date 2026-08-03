@@ -5,10 +5,12 @@
   if (!sharedConstants) {
     return;
   }
-  const { TOKENS, ASSETS } = sharedConstants;
+  const { TOKENS, DARK_TOKENS, ASSETS } = sharedConstants;
   function ensureThemeDocument(targetDocument: Document, scope: string) {
     const { documentElement } = targetDocument;
     documentElement.dataset.ccxpLiteScope = scope;
+    const theme = getPersistedTheme();
+    documentElement.dataset.ccxpLiteTheme = theme;
     const { sharedDom } = namespace;
     const head = sharedDom?.ensureDocumentHead(targetDocument);
     if (!head) {
@@ -35,55 +37,62 @@
       if (!runtime) {
         return false;
       }
+      const inlineStyle = targetDocument.createElement("style");
+      inlineStyle.textContent =
+        "html, body { background-color: var(--ccxp-lite-bg, #ffffff) !important; }";
+      head.append(inlineStyle);
       const link = targetDocument.createElement("link");
       link.rel = "stylesheet";
       link.href = runtime.getURL(ASSETS.stylesheetPath);
       link.dataset.ccxpLiteStylesheet = "true";
       head.append(link);
     }
-    applyCssVariables(targetDocument.documentElement, buildCssVariables());
+    applyCssVariables(targetDocument.documentElement, buildCssVariables(theme));
     return true;
   }
 
-  function buildCssVariables() {
+  function buildCssVariables(theme: "light" | "dark" = getPersistedTheme()) {
+    const tokens = theme === "dark" && DARK_TOKENS ? { ...TOKENS, ...DARK_TOKENS } : TOKENS;
     return {
-      "--ccxp-lite-primary": TOKENS.colorPrimary,
-      "--ccxp-lite-accent": TOKENS.colorAccent,
-      "--ccxp-lite-brand": TOKENS.colorBrand,
+      "--ccxp-lite-primary": tokens.colorPrimary,
+      "--ccxp-lite-accent": tokens.colorAccent,
+      "--ccxp-lite-brand": tokens.colorBrand,
       "--ccxp-lite-brand-logo-filter":
-        "brightness(0) saturate(100%) invert(19%) sepia(49%) saturate(2697%) hue-rotate(278deg) brightness(89%) contrast(92%)",
-      "--ccxp-lite-legacy-blue-text": TOKENS.colorLegacyBlueText,
-      "--ccxp-lite-legacy-red-text": TOKENS.colorLegacyRedText,
-      "--ccxp-lite-bg": TOKENS.colorBg,
-      "--ccxp-lite-surface": TOKENS.colorSurface,
-      "--ccxp-lite-sidebar-surface": TOKENS.colorSidebarSurface,
-      "--ccxp-lite-surface-muted": TOKENS.colorSurfaceMuted,
-      "--ccxp-lite-border": TOKENS.colorBorder,
-      "--ccxp-lite-sidebar-divider-color": TOKENS.colorSidebarDivider,
-      "--ccxp-lite-sidebar-search-surface": TOKENS.colorSidebarSearchSurface,
-      "--ccxp-lite-sidebar-search-gradient-start": TOKENS.colorSidebarSearchGradientStart,
-      "--ccxp-lite-sidebar-search-border": TOKENS.colorSidebarSearchBorder,
-      "--ccxp-lite-primary-focus-border": TOKENS.colorPrimaryFocusBorder,
-      "--ccxp-lite-primary-focus-ring": TOKENS.colorPrimaryFocusRing,
-      "--ccxp-lite-primary-hover-surface": TOKENS.colorPrimaryHoverSurface,
-      "--ccxp-lite-primary-hover-solid": TOKENS.colorPrimaryHoverSolid,
-      "--ccxp-lite-primary-muted-surface": TOKENS.colorPrimaryMutedSurface,
-      "--ccxp-lite-primary-glow": TOKENS.colorPrimaryGlow,
-      "--ccxp-lite-lab-active-surface": TOKENS.colorLabActiveSurface,
-      "--ccxp-lite-lab-active-border": TOKENS.colorLabActiveBorder,
-      "--ccxp-lite-lab-active-text": TOKENS.colorLabActiveText,
-      "--ccxp-lite-lab-inactive-surface": TOKENS.colorLabInactiveSurface,
-      "--ccxp-lite-lab-inactive-border": TOKENS.colorLabInactiveBorder,
-      "--ccxp-lite-lab-inactive-text": TOKENS.colorLabInactiveText,
-      "--ccxp-lite-lab-switch-shadow": TOKENS.colorLabSwitchShadow,
-      "--ccxp-lite-sidebar-search-placeholder": TOKENS.colorSidebarSearchPlaceholder,
-      "--ccxp-lite-text": TOKENS.colorText,
-      "--ccxp-lite-text-muted": TOKENS.colorTextMuted,
-      "--ccxp-lite-transparent": TOKENS.colorTransparent,
-      "--ccxp-lite-skeleton-surface-end-tint": TOKENS.colorSkeletonSurfaceEndTint,
-      "--ccxp-lite-skeleton-highlight-start": TOKENS.colorSkeletonHighlightStart,
-      "--ccxp-lite-skeleton-highlight-soft": TOKENS.colorSkeletonHighlightSoft,
-      "--ccxp-lite-skeleton-highlight-strong": TOKENS.colorSkeletonHighlightStrong,
+        theme === "dark"
+          ? "brightness(0) saturate(100%) invert(64%) sepia(21%) saturate(1454%) hue-rotate(264deg) brightness(88%) contrast(85%)"
+          : "brightness(0) saturate(100%) invert(19%) sepia(49%) saturate(2697%) hue-rotate(278deg) brightness(89%) contrast(92%)",
+      "--ccxp-lite-legacy-blue-text": tokens.colorLegacyBlueText,
+      "--ccxp-lite-legacy-red-text": tokens.colorLegacyRedText,
+      "--ccxp-lite-bg": tokens.colorBg,
+      "--ccxp-lite-surface": tokens.colorSurface,
+      "--ccxp-lite-sidebar-surface": tokens.colorSidebarSurface,
+      "--ccxp-lite-surface-muted": tokens.colorSurfaceMuted,
+      "--ccxp-lite-border": tokens.colorBorder,
+      "--ccxp-lite-sidebar-divider-color": tokens.colorSidebarDivider,
+      "--ccxp-lite-sidebar-search-surface": tokens.colorSidebarSearchSurface,
+      "--ccxp-lite-sidebar-search-gradient-start": tokens.colorSidebarSearchGradientStart,
+      "--ccxp-lite-sidebar-search-border": tokens.colorSidebarSearchBorder,
+      "--ccxp-lite-primary-focus-border": tokens.colorPrimaryFocusBorder,
+      "--ccxp-lite-primary-focus-ring": tokens.colorPrimaryFocusRing,
+      "--ccxp-lite-primary-hover-surface": tokens.colorPrimaryHoverSurface,
+      "--ccxp-lite-primary-hover-solid": tokens.colorPrimaryHoverSolid,
+      "--ccxp-lite-primary-muted-surface": tokens.colorPrimaryMutedSurface,
+      "--ccxp-lite-primary-glow": tokens.colorPrimaryGlow,
+      "--ccxp-lite-lab-active-surface": tokens.colorLabActiveSurface,
+      "--ccxp-lite-lab-active-border": tokens.colorLabActiveBorder,
+      "--ccxp-lite-lab-active-text": tokens.colorLabActiveText,
+      "--ccxp-lite-lab-inactive-surface": tokens.colorLabInactiveSurface,
+      "--ccxp-lite-lab-inactive-border": tokens.colorLabInactiveBorder,
+      "--ccxp-lite-lab-inactive-text": tokens.colorLabInactiveText,
+      "--ccxp-lite-lab-switch-shadow": tokens.colorLabSwitchShadow,
+      "--ccxp-lite-sidebar-search-placeholder": tokens.colorSidebarSearchPlaceholder,
+      "--ccxp-lite-text": tokens.colorText,
+      "--ccxp-lite-text-muted": tokens.colorTextMuted,
+      "--ccxp-lite-transparent": tokens.colorTransparent,
+      "--ccxp-lite-skeleton-surface-end-tint": tokens.colorSkeletonSurfaceEndTint,
+      "--ccxp-lite-skeleton-highlight-start": tokens.colorSkeletonHighlightStart,
+      "--ccxp-lite-skeleton-highlight-soft": tokens.colorSkeletonHighlightSoft,
+      "--ccxp-lite-skeleton-highlight-strong": tokens.colorSkeletonHighlightStrong,
       "--ccxp-lite-skeleton-surface-start":
         "color-mix(in srgb, var(--ccxp-lite-surface) 60%, var(--ccxp-lite-accent))",
       "--ccxp-lite-skeleton-surface-end":
@@ -98,78 +107,78 @@
         "color-mix(in srgb, var(--ccxp-lite-type-danger-color) 78%, var(--ccxp-lite-bg))",
       "--ccxp-lite-danger-flash-shadow":
         "color-mix(in srgb, var(--ccxp-lite-type-danger-color) 14%, var(--ccxp-lite-transparent))",
-      "--ccxp-lite-spacing-xs": TOKENS.spacingXs,
-      "--ccxp-lite-spacing-sm": TOKENS.spacingSm,
-      "--ccxp-lite-spacing-md": TOKENS.spacingMd,
-      "--ccxp-lite-spacing-lg": TOKENS.spacingLg,
-      "--ccxp-lite-spacing-xl": TOKENS.spacingXl,
-      "--ccxp-lite-spacing-2xs": TOKENS.spacing2xs,
-      "--ccxp-lite-spacing-3xs": TOKENS.spacing3xs,
-      "--ccxp-lite-spacing-inline-sm": TOKENS.spacingInlineSm,
-      "--ccxp-lite-spacing-inset-sm": TOKENS.spacingInsetSm,
-      "--ccxp-lite-spacing-inset-md": TOKENS.spacingInsetMd,
-      "--ccxp-lite-spacing-inset-lg": TOKENS.spacingInsetLg,
-      "--ccxp-lite-spacing-brand-inline": TOKENS.spacingBrandInline,
-      "--ccxp-lite-spacing-sidebar-search-inset": TOKENS.spacingSidebarSearchInset,
-      "--ccxp-lite-spacing-sidebar-experiment-inset-x": TOKENS.spacingSidebarExperimentInsetX,
-      "--ccxp-lite-spacing-sidebar-experiment-inset-y": TOKENS.spacingSidebarExperimentInsetY,
-      "--ccxp-lite-sidebar-row-padding-y": TOKENS.sidebarRowPaddingY,
-      "--ccxp-lite-sidebar-row-padding-x": TOKENS.sidebarRowPaddingX,
-      "--ccxp-lite-sidebar-row-gap": TOKENS.sidebarRowGap,
-      "--ccxp-lite-sidebar-tree-indent-step": TOKENS.sidebarTreeIndentStep,
-      "--ccxp-lite-radius-xs": TOKENS.radiusXs,
-      "--ccxp-lite-radius-sm": TOKENS.radiusSm,
-      "--ccxp-lite-radius-input": TOKENS.radiusInput,
-      "--ccxp-lite-radius-md": TOKENS.radiusMd,
-      "--ccxp-lite-radius-lg": TOKENS.radiusLg,
-      "--ccxp-lite-radius-brand": TOKENS.radiusBrand,
-      "--ccxp-lite-radius-full": TOKENS.radiusFull,
-      "--ccxp-lite-font-sans": TOKENS.fontSans,
-      "--ccxp-lite-font-brand": TOKENS.fontBrand,
-      "--ccxp-lite-font-weight-regular": TOKENS.fontWeightRegular,
-      "--ccxp-lite-font-weight-strong": TOKENS.fontWeightStrong,
-      "--ccxp-lite-font-weight-heavy": TOKENS.fontWeightHeavy,
-      "--ccxp-lite-font-variant-numeric-tabular": TOKENS.fontVariantNumericTabular,
-      "--ccxp-lite-font-size-caption": TOKENS.fontSizeCaption,
-      "--ccxp-lite-font-size-nav": TOKENS.fontSizeNav,
-      "--ccxp-lite-font-size-utility": TOKENS.fontSizeUtility,
-      "--ccxp-lite-font-size-body": TOKENS.fontSizeBody,
-      "--ccxp-lite-font-size-sidebar-brand": TOKENS.fontSizeSidebarBrand,
-      "--ccxp-lite-size-sidebar-brand-logo": TOKENS.sizeSidebarBrandLogo,
-      "--ccxp-lite-size-sidebar-category-leading": TOKENS.sizeSidebarCategoryLeading,
-      "--ccxp-lite-size-sidebar-control": TOKENS.sizeSidebarControl,
-      "--ccxp-lite-size-sidebar-guide-line": TOKENS.sizeSidebarGuideLine,
-      "--ccxp-lite-size-sidebar-search-spacer": TOKENS.sizeSidebarSearchSpacer,
-      "--ccxp-lite-size-sidebar-search-width": TOKENS.sizeSidebarSearchWidth,
-      "--ccxp-lite-spacing-sidebar-brand-word-gap": TOKENS.spacingSidebarBrandWordGap,
-      "--ccxp-lite-size-sidebar-header-divider-width": TOKENS.sizeSidebarHeaderDividerWidth,
-      "--ccxp-lite-size-sidebar-header-divider-height": TOKENS.sizeSidebarHeaderDividerHeight,
-      "--ccxp-lite-size-sidebar-search-icon": TOKENS.sizeSidebarSearchIcon,
-      "--ccxp-lite-size-sidebar-experiment-switch": TOKENS.sizeSidebarExperimentSwitch,
+      "--ccxp-lite-spacing-xs": tokens.spacingXs,
+      "--ccxp-lite-spacing-sm": tokens.spacingSm,
+      "--ccxp-lite-spacing-md": tokens.spacingMd,
+      "--ccxp-lite-spacing-lg": tokens.spacingLg,
+      "--ccxp-lite-spacing-xl": tokens.spacingXl,
+      "--ccxp-lite-spacing-2xs": tokens.spacing2xs,
+      "--ccxp-lite-spacing-3xs": tokens.spacing3xs,
+      "--ccxp-lite-spacing-inline-sm": tokens.spacingInlineSm,
+      "--ccxp-lite-spacing-inset-sm": tokens.spacingInsetSm,
+      "--ccxp-lite-spacing-inset-md": tokens.spacingInsetMd,
+      "--ccxp-lite-spacing-inset-lg": tokens.spacingInsetLg,
+      "--ccxp-lite-spacing-brand-inline": tokens.spacingBrandInline,
+      "--ccxp-lite-spacing-sidebar-search-inset": tokens.spacingSidebarSearchInset,
+      "--ccxp-lite-spacing-sidebar-experiment-inset-x": tokens.spacingSidebarExperimentInsetX,
+      "--ccxp-lite-spacing-sidebar-experiment-inset-y": tokens.spacingSidebarExperimentInsetY,
+      "--ccxp-lite-sidebar-row-padding-y": tokens.sidebarRowPaddingY,
+      "--ccxp-lite-sidebar-row-padding-x": tokens.sidebarRowPaddingX,
+      "--ccxp-lite-sidebar-row-gap": tokens.sidebarRowGap,
+      "--ccxp-lite-sidebar-tree-indent-step": tokens.sidebarTreeIndentStep,
+      "--ccxp-lite-radius-xs": tokens.radiusXs,
+      "--ccxp-lite-radius-sm": tokens.radiusSm,
+      "--ccxp-lite-radius-input": tokens.radiusInput,
+      "--ccxp-lite-radius-md": tokens.radiusMd,
+      "--ccxp-lite-radius-lg": tokens.radiusLg,
+      "--ccxp-lite-radius-brand": tokens.radiusBrand,
+      "--ccxp-lite-radius-full": tokens.radiusFull,
+      "--ccxp-lite-font-sans": tokens.fontSans,
+      "--ccxp-lite-font-brand": tokens.fontBrand,
+      "--ccxp-lite-font-weight-regular": tokens.fontWeightRegular,
+      "--ccxp-lite-font-weight-strong": tokens.fontWeightStrong,
+      "--ccxp-lite-font-weight-heavy": tokens.fontWeightHeavy,
+      "--ccxp-lite-font-variant-numeric-tabular": tokens.fontVariantNumericTabular,
+      "--ccxp-lite-font-size-caption": tokens.fontSizeCaption,
+      "--ccxp-lite-font-size-nav": tokens.fontSizeNav,
+      "--ccxp-lite-font-size-utility": tokens.fontSizeUtility,
+      "--ccxp-lite-font-size-body": tokens.fontSizeBody,
+      "--ccxp-lite-font-size-sidebar-brand": tokens.fontSizeSidebarBrand,
+      "--ccxp-lite-size-sidebar-brand-logo": tokens.sizeSidebarBrandLogo,
+      "--ccxp-lite-size-sidebar-category-leading": tokens.sizeSidebarCategoryLeading,
+      "--ccxp-lite-size-sidebar-control": tokens.sizeSidebarControl,
+      "--ccxp-lite-size-sidebar-guide-line": tokens.sizeSidebarGuideLine,
+      "--ccxp-lite-size-sidebar-search-spacer": tokens.sizeSidebarSearchSpacer,
+      "--ccxp-lite-size-sidebar-search-width": tokens.sizeSidebarSearchWidth,
+      "--ccxp-lite-spacing-sidebar-brand-word-gap": tokens.spacingSidebarBrandWordGap,
+      "--ccxp-lite-size-sidebar-header-divider-width": tokens.sizeSidebarHeaderDividerWidth,
+      "--ccxp-lite-size-sidebar-header-divider-height": tokens.sizeSidebarHeaderDividerHeight,
+      "--ccxp-lite-size-sidebar-search-icon": tokens.sizeSidebarSearchIcon,
+      "--ccxp-lite-size-sidebar-experiment-switch": tokens.sizeSidebarExperimentSwitch,
       "--ccxp-lite-size-sidebar-experiment-switch-expanded":
-        TOKENS.sizeSidebarExperimentSwitchExpanded,
-      "--ccxp-lite-size-landing-brand-logo": TOKENS.sizeLandingBrandLogo,
-      "--ccxp-lite-size-landing-header-height": TOKENS.sizeLandingHeaderHeight,
-      "--ccxp-lite-size-form-control-width": TOKENS.sizeFormControlWidth,
-      "--ccxp-lite-size-login-control-height": TOKENS.sizeLoginControlHeight,
-      "--ccxp-lite-size-password-toggle-offset": TOKENS.sizePasswordToggleOffset,
-      "--ccxp-lite-size-icon-button-sm": TOKENS.sizeIconButtonSm,
-      "--ccxp-lite-size-icon-button-md": TOKENS.sizeIconButtonMd,
-      "--ccxp-lite-size-sidebar-section-icon": TOKENS.sizeSidebarSectionIcon,
-      "--ccxp-lite-size-sidebar-category-card-icon": TOKENS.sizeSidebarCategoryCardIcon,
-      "--ccxp-lite-size-control-min-width": TOKENS.sizeControlMinWidth,
-      "--ccxp-lite-size-control-height-sm": TOKENS.sizeControlHeightSm,
-      "--ccxp-lite-size-control-height-md": TOKENS.sizeControlHeightMd,
-      "--ccxp-lite-size-sidebar-section-card-min-height": TOKENS.sizeSidebarSectionCardMinHeight,
-      "--ccxp-lite-size-sidebar-category-card-min-height": TOKENS.sizeSidebarCategoryCardMinHeight,
-      "--ccxp-lite-size-sidebar-destination-frame-offset": TOKENS.sizeSidebarDestinationFrameOffset,
-      "--ccxp-lite-size-announcement-divider": TOKENS.sizeAnnouncementDivider,
-      "--ccxp-lite-font-size-page-title": TOKENS.fontSizePageTitle,
-      "--ccxp-lite-font-size-display": TOKENS.fontSizeDisplay,
-      "--ccxp-lite-font-size-section-title": TOKENS.fontSizeSectionTitle,
-      "--ccxp-lite-font-size-chip": TOKENS.fontSizeChip,
-      "--ccxp-lite-sidebar-width": TOKENS.sidebarWidth,
-      "--ccxp-lite-landing-max-width": TOKENS.landingMaxWidth,
+        tokens.sizeSidebarExperimentSwitchExpanded,
+      "--ccxp-lite-size-landing-brand-logo": tokens.sizeLandingBrandLogo,
+      "--ccxp-lite-size-landing-header-height": tokens.sizeLandingHeaderHeight,
+      "--ccxp-lite-size-form-control-width": tokens.sizeFormControlWidth,
+      "--ccxp-lite-size-login-control-height": tokens.sizeLoginControlHeight,
+      "--ccxp-lite-size-password-toggle-offset": tokens.sizePasswordToggleOffset,
+      "--ccxp-lite-size-icon-button-sm": tokens.sizeIconButtonSm,
+      "--ccxp-lite-size-icon-button-md": tokens.sizeIconButtonMd,
+      "--ccxp-lite-size-sidebar-section-icon": tokens.sizeSidebarSectionIcon,
+      "--ccxp-lite-size-sidebar-category-card-icon": tokens.sizeSidebarCategoryCardIcon,
+      "--ccxp-lite-size-control-min-width": tokens.sizeControlMinWidth,
+      "--ccxp-lite-size-control-height-sm": tokens.sizeControlHeightSm,
+      "--ccxp-lite-size-control-height-md": tokens.sizeControlHeightMd,
+      "--ccxp-lite-size-sidebar-section-card-min-height": tokens.sizeSidebarSectionCardMinHeight,
+      "--ccxp-lite-size-sidebar-category-card-min-height": tokens.sizeSidebarCategoryCardMinHeight,
+      "--ccxp-lite-size-sidebar-destination-frame-offset": tokens.sizeSidebarDestinationFrameOffset,
+      "--ccxp-lite-size-announcement-divider": tokens.sizeAnnouncementDivider,
+      "--ccxp-lite-font-size-page-title": tokens.fontSizePageTitle,
+      "--ccxp-lite-font-size-display": tokens.fontSizeDisplay,
+      "--ccxp-lite-font-size-section-title": tokens.fontSizeSectionTitle,
+      "--ccxp-lite-font-size-chip": tokens.fontSizeChip,
+      "--ccxp-lite-sidebar-width": tokens.sidebarWidth,
+      "--ccxp-lite-landing-max-width": tokens.landingMaxWidth,
       "--ccxp-lite-type-display":
         "var(--ccxp-lite-font-weight-heavy) var(--ccxp-lite-font-size-display)/1.1 var(--ccxp-lite-font-sans)",
       "--ccxp-lite-type-display-color": "var(--ccxp-lite-text)",
@@ -211,7 +220,63 @@
       targetElement.style.setProperty(name, value);
     }
   }
+
+  function getPersistedTheme(): "light" | "dark" {
+    try {
+      return globalThis.localStorage.getItem("ccxp-lite-theme") === "dark" ? "dark" : "light";
+    } catch {
+      return "light";
+    }
+  }
+
+  function setPersistedTheme(theme: "light" | "dark") {
+    try {
+      globalThis.localStorage.setItem("ccxp-lite-theme", theme);
+    } catch {
+      // Ignore storage write failures.
+    }
+  }
+
+  function applyThemeToDocument(targetDocument: Document) {
+    const scope = targetDocument.documentElement.dataset.ccxpLiteScope;
+    if (scope === undefined || scope === "") {
+      return;
+    }
+    const theme = getPersistedTheme();
+    // eslint-disable-next-line no-param-reassign
+    targetDocument.documentElement.dataset.ccxpLiteTheme = theme;
+    applyCssVariables(targetDocument.documentElement, buildCssVariables(theme));
+  }
+
+  function updateAllFramesTheme() {
+    try {
+      const topWin = globalThis.top ?? globalThis;
+      const traverse = (win: Window) => {
+        try {
+          applyThemeToDocument(win.document);
+        } catch {
+          // Ignore.
+        }
+        // eslint-disable-next-line @typescript-eslint/prefer-for-of
+        for (let i = 0; i < win.frames.length; i++) {
+          try {
+            traverse(win.frames[i]);
+          } catch {
+            // Ignore.
+          }
+        }
+      };
+      traverse(topWin);
+    } catch {
+      // Ignore.
+    }
+  }
+
   namespace.sharedTheme = {
     ensureThemeDocument,
+    getPersistedTheme,
+    setPersistedTheme,
+    applyThemeToDocument,
+    updateAllFramesTheme,
   };
 })(globalThis);

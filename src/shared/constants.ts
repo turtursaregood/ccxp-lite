@@ -115,6 +115,44 @@
     landingClass: "ccxp-lite-landing-shell",
   } as const;
 
+  const DARK_TOKENS = {
+    colorPrimary: "#B074B5",
+    colorAccent: "#242b35",
+    colorBrand: "#B074B5",
+    colorLegacyBlueText: "#90CDF4",
+    colorLegacyRedText: "#FEB2B2",
+    colorBg: "#0f141c",
+    colorSurface: "#18202c",
+    colorSidebarSurface: "#131923",
+    colorSurfaceMuted: "#1e2633",
+    colorBorder: "rgba(255, 255, 255, 0.08)",
+    colorSidebarDivider: "rgba(255, 255, 255, 0.12)",
+    colorSidebarSearchSurface: "rgba(24, 32, 44, 0.8)",
+    colorSidebarSearchGradientStart: "rgba(24, 32, 44, 0.95)",
+    colorSidebarSearchBorder: "rgba(255, 255, 255, 0.08)",
+    colorPrimaryFocusBorder: "rgba(176, 116, 181, 0.4)",
+    colorPrimaryFocusRing: "rgba(176, 116, 181, 0.12)",
+    colorPrimaryHoverSurface: "rgba(176, 116, 181, 0.12)",
+    colorPrimaryHoverSolid: "#C084C5",
+    colorPrimaryMutedSurface: "rgba(176, 116, 181, 0.08)",
+    colorPrimaryGlow: "rgba(176, 116, 181, 0.25)",
+    colorLabActiveSurface: "rgba(176, 116, 181, 0.2)",
+    colorLabActiveBorder: "rgba(176, 116, 181, 0.35)",
+    colorLabActiveText: "#C084C5",
+    colorLabInactiveSurface: "rgba(148, 163, 184, 0.15)",
+    colorLabInactiveBorder: "rgba(148, 163, 184, 0.25)",
+    colorLabInactiveText: "#94A3B8",
+    colorLabSwitchShadow: "rgba(0, 0, 0, 0.4)",
+    colorSidebarSearchPlaceholder: "#8a99ad",
+    colorText: "#F1F5F9",
+    colorTextMuted: "#94A3B8",
+    colorTransparent: "transparent",
+    colorSkeletonSurfaceEndTint: "#242f41",
+    colorSkeletonHighlightStart: "rgba(0, 0, 0, 0)",
+    colorSkeletonHighlightSoft: "rgba(255, 255, 255, 0.05)",
+    colorSkeletonHighlightStrong: "rgba(255, 255, 255, 0.15)",
+  } as const;
+
   const LOCALIZED_STRINGS = {
     en: {
       sidebarTitle: "NTHU AIS",
@@ -197,6 +235,11 @@
       sidebarVariantLayered: "Layered",
       sidebarSwitchToClassic: "Switch to classic sidebar",
       sidebarSwitchToLayered: "Switch to layered menu",
+      themeSwitchToLight: "Switch to light theme",
+      themeSwitchToDark: "Switch to night theme",
+      themeLabel: "Night Mode",
+      themeOn: "On",
+      themeOff: "Off",
     },
     zh: {
       sidebarTitle: "\u6821\u52D9\u8CC7\u8A0A\u7CFB\u7D71",
@@ -288,6 +331,11 @@
       sidebarVariantLayered: "\u5206\u5C64\u9078\u55AE",
       sidebarSwitchToClassic: "\u5207\u63DB\u70BA\u7D93\u5178\u5074\u6B04",
       sidebarSwitchToLayered: "\u5207\u63DB\u70BA\u5206\u5C64\u9078\u55AE",
+      themeSwitchToLight: "\u5207\u63DB\u70BA\u6DFA\u8272\u4E3B\u984C",
+      themeSwitchToDark: "\u5207\u63DB\u70BA\u591C\u9593\u6A21\u5F0F",
+      themeLabel: "\u591C\u9593\u6A21\u5F0F",
+      themeOn: "\u958B\u555F",
+      themeOff: "\u95DC\u9589",
     },
   } as const;
 
@@ -466,6 +514,7 @@
 
   namespace.sharedConstants = {
     TOKENS,
+    DARK_TOKENS,
     LOCALIZED_STRINGS,
     SIDEBAR_CATEGORIES,
     ASSETS,

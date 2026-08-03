@@ -298,10 +298,29 @@ try {
   writeManifest(path.join(stagingDir, "manifest.json"));
   writeManifest(path.join(unpackedDir, "manifest.json"));
 
-  const zipResult = spawnSync("zip", ["-q", "-r", outputZip, "."], {
-    cwd: stagingDir,
-    stdio: "inherit",
-  });
+  const zipResult =
+    process.platform === "win32"
+      ? (() => {
+          const tempZip = outputZip.endsWith(".xpi") ? `${outputZip.slice(0, -4)}.zip` : outputZip;
+          const res = spawnSync(
+            "powershell.exe",
+            [
+              "-NoProfile",
+              "-Command",
+              String.raw`Compress-Archive -Path '${stagingDir}\*' -DestinationPath '${tempZip}' -Force${
+                outputZip.endsWith(".xpi")
+                  ? `; Move-Item -Path '${tempZip}' -Destination '${outputZip}' -Force`
+                  : ""
+              }`,
+            ],
+            { stdio: "inherit" },
+          );
+          return res;
+        })()
+      : spawnSync("zip", ["-q", "-r", outputZip, "."], {
+          cwd: stagingDir,
+          stdio: "inherit",
+        });
 
   if (zipResult.status !== 0) {
     throw new Error("zip command failed");
@@ -309,10 +328,21 @@ try {
 
   if (target === "firefox") {
     copyTree(projectRoot, sourceStagingDir, shouldCopyFirefoxSourceArchivePath);
-    const sourceZipResult = spawnSync("zip", ["-q", "-r", firefoxSourceZip, "."], {
-      cwd: sourceStagingDir,
-      stdio: "inherit",
-    });
+    const sourceZipResult =
+      process.platform === "win32"
+        ? spawnSync(
+            "powershell.exe",
+            [
+              "-NoProfile",
+              "-Command",
+              String.raw`Compress-Archive -Path '${sourceStagingDir}\*' -DestinationPath '${firefoxSourceZip}' -Force`,
+            ],
+            { stdio: "inherit" },
+          )
+        : spawnSync("zip", ["-q", "-r", firefoxSourceZip, "."], {
+            cwd: sourceStagingDir,
+            stdio: "inherit",
+          });
 
     if (sourceZipResult.status !== 0) {
       throw new Error("firefox source zip command failed");

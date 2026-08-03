@@ -2,8 +2,17 @@
   const runtimeScope = globalScope;
   const namespace = runtimeScope.CCXP_LITE ?? {};
   const { shared } = namespace;
-  const { loginValidation, loginCaptcha, loginTabs, loginSupport, loginUi } = namespace;
-  if (!shared || !loginValidation || !loginCaptcha || !loginTabs || !loginSupport || !loginUi) {
+  const { loginValidation, loginCaptcha, loginTabs, loginSupport, loginUi, sharedTheme } =
+    namespace;
+  if (
+    !shared ||
+    !loginValidation ||
+    !loginCaptcha ||
+    !loginTabs ||
+    !loginSupport ||
+    !loginUi ||
+    !sharedTheme
+  ) {
     return;
   }
 
@@ -41,6 +50,12 @@
     alignCaptchaMediaRow,
     enhancePasswordVisibilityToggle,
   } = loginUi;
+
+  function renderThemeIcon(isDark: boolean) {
+    return isDark
+      ? "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' width='20' height='20'><path d='M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z'></path></svg>"
+      : "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round' width='20' height='20'><circle cx='12' cy='12' r='4'></circle><path d='M12 2v2'></path><path d='M12 20v2'></path><path d='m4.93 4.93 1.41 1.41'></path><path d='m17.66 17.66 1.41 1.41'></path><path d='M2 12h2'></path><path d='M20 12h2'></path><path d='m6.34 17.66-1.41 1.41'></path><path d='m19.07 4.93-1.41 1.41'></path></svg>";
+  }
 
   function rewriteLoginSurface(
     targetDocument: Document,
@@ -145,8 +160,41 @@
     removeNode(loginSection.querySelector("#twcaseal")?.closest("table") ?? undefined);
     collapseLegacyThreeColumnRows(targetDocument.body);
 
+    let themeSwitch: HTMLButtonElement | undefined;
+    if (sharedTheme !== undefined) {
+      themeSwitch = targetDocument.createElement("button");
+      const { getPersistedTheme, setPersistedTheme, updateAllFramesTheme } = sharedTheme;
+      const initialTheme = getPersistedTheme();
+      themeSwitch.type = "button";
+      themeSwitch.className = "ccxp-lite-landing-theme-switch";
+      themeSwitch.dataset.ccxpLiteThemeMode = initialTheme;
+      themeSwitch.setAttribute(
+        "aria-label",
+        initialTheme === "dark" ? strings.themeSwitchToLight : strings.themeSwitchToDark,
+      );
+
+      themeSwitch.innerHTML = renderThemeIcon(initialTheme === "dark");
+
+      themeSwitch.addEventListener("click", () => {
+        const current = getPersistedTheme();
+        const nextTheme = current === "light" ? "dark" : "light";
+        setPersistedTheme(nextTheme);
+        updateAllFramesTheme();
+        if (themeSwitch !== undefined) {
+          themeSwitch.dataset.ccxpLiteThemeMode = nextTheme;
+          themeSwitch.setAttribute(
+            "aria-label",
+            nextTheme === "dark" ? strings.themeSwitchToLight : strings.themeSwitchToDark,
+          );
+          themeSwitch.innerHTML = renderThemeIcon(nextTheme === "dark");
+        }
+      });
+
+      langSection.prepend(themeSwitch);
+    }
+
     headerSection.append(brandSection);
-    if (languageLinks) {
+    if (languageLinks !== undefined || themeSwitch !== undefined) {
       headerSection.append(langSection);
     }
 
@@ -157,11 +205,11 @@
       serviceLink,
       strings,
     );
-    if (utilityHeaderLinks) {
-      if (languageLinks) {
-        langSection.before(utilityHeaderLinks);
-      } else {
+    if (utilityHeaderLinks !== undefined) {
+      if (languageLinks === undefined) {
         headerSection.append(utilityHeaderLinks);
+      } else {
+        langSection.before(utilityHeaderLinks);
       }
     }
 

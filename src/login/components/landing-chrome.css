@@ -8,6 +8,10 @@
   overflow: hidden;
 }
 
+html[data-ccxp-lite-theme="dark"] {
+  color-scheme: dark;
+}
+
 .ccxp-lite-landing-section {
   width: min(100%, var(--ccxp-lite-landing-max-width));
   max-width: 100%;
@@ -95,9 +99,37 @@
 .ccxp-lite-landing-lang {
   grid-area: lang;
   display: flex;
+  align-items: center;
   justify-content: flex-end;
   justify-self: end;
   min-width: 0;
+  gap: var(--ccxp-lite-spacing-sm);
+}
+
+.ccxp-lite-landing-theme-switch {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--ccxp-lite-text-muted);
+  cursor: pointer;
+  transition: all 120ms ease;
+  flex: 0 0 auto;
+}
+
+.ccxp-lite-landing-theme-switch:hover {
+  background: var(--ccxp-lite-primary-hover-surface);
+  color: var(--ccxp-lite-primary);
+}
+
+.ccxp-lite-landing-theme-switch:focus-visible {
+  outline: 2px solid var(--ccxp-lite-primary-focus-border);
+  outline-offset: 2px;
 }
 
 .ccxp-lite-landing-utility {

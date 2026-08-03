@@ -239,7 +239,13 @@
     return;
   }
   const { TOKENS, LOCALIZED_STRINGS, SIDEBAR_CATEGORIES, ASSETS } = sharedConstants;
-  const { ensureThemeDocument } = sharedTheme;
+  const {
+    ensureThemeDocument,
+    getPersistedTheme,
+    setPersistedTheme,
+    applyThemeToDocument,
+    updateAllFramesTheme,
+  } = sharedTheme;
   const { getLocalizedStrings, normalizeLocale, rememberLocale, resolveLocaleFromDocument } =
     sharedLocale;
   const { createBrandImage, createBrandCopy, createBrandPartnerIcon, createBrandPartnerLink } =
@@ -251,6 +257,10 @@
     SIDEBAR_CATEGORIES,
     ASSETS,
     ensureThemeDocument,
+    getPersistedTheme,
+    setPersistedTheme,
+    applyThemeToDocument,
+    updateAllFramesTheme,
     getLocalizedStrings,
     normalizeLocale,
     rememberLocale,
