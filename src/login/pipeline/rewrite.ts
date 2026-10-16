@@ -1,6 +1,10 @@
 (function registerCcxpLiteLoginRewrite(globalScope: typeof globalThis) {
   const runtimeScope = globalScope;
   const namespace = runtimeScope.CCXP_LITE ?? {};
+  if (!namespace.uiLanguage) {
+    return;
+  }
+  const { createLanguageSelector } = namespace.uiLanguage;
   const { shared } = namespace;
   const { loginValidation, loginCaptcha, loginTabs, loginSupport, loginUi, sharedTheme } =
     namespace;
@@ -17,11 +21,11 @@
   }
 
   const {
+    createSupportLinks,
     TOKENS,
     ASSETS,
     createBrandImage,
     createBrandCopy,
-    createBrandPartnerLink,
     moveChildNodes,
     removeNode,
   } = shared;
@@ -64,8 +68,6 @@
     const {
       loginForm,
       loginSourceCell,
-      tabNavigation,
-      tabContents,
       languageLinks,
       announcementTable,
       utilityLinks,
@@ -83,7 +85,6 @@
       targetDocument,
       "ccxp-lite-landing-brand ccxp-lite-sidebar-brand-group",
     );
-    const langSection = createSection(targetDocument, "ccxp-lite-landing-lang");
     const loginSection = createSection(targetDocument, "ccxp-lite-landing-login");
     const noticesSection = createSection(targetDocument, "ccxp-lite-landing-notices");
 
@@ -106,22 +107,7 @@
     );
     brandSection.append(brandLockup);
 
-    const { link: repoLink } = createBrandPartnerLink(targetDocument, {
-      linkClassName: "ccxp-lite-landing-brand-partner-link",
-      iconWrapClassName: "ccxp-lite-landing-brand-partner-mark",
-      copyClassName: "ccxp-lite-landing-brand-partner-copy",
-      labelClassName: "ccxp-lite-landing-brand-partner-label",
-      label: strings.sidebarGitHubLink,
-    });
-    brandSection.append(repoLink);
-
-    if (languageLinks) {
-      langSection.append(languageLinks);
-    }
-
-    repoLink.addEventListener("click", () => {
-      window.open("https://github.com/NTHU-SA/ccxpLite", "_blank", "noopener,noreferrer");
-    });
+    const langSection = createLanguageSelector(targetDocument, languageLinks);
 
     const loginHeaderLabel = targetDocument.createElement("h1");
     loginHeaderLabel.className = "ccxp-lite-landing-login-label";
@@ -213,12 +199,42 @@
       }
     }
 
+    cleanLegacySupport(identifiedSurface);
+    topSection.append(headerSection);
+
+    if (announcementTable && !announcementTable.hidden) {
+      bodySection.append(loginSection);
+      noticesSection.append(announcementTable);
+      bodySection.append(noticesSection);
+      topSection.append(bodySection);
+    } else {
+      topSection.append(loginSection);
+    }
+    const footer = targetDocument.createElement("footer");
+    footer.className = "ccxp-lite-landing-footer";
+    for (const link of createSupportLinks(targetDocument)) {
+      if (link.textContent !== "ccxpLite") {
+        link.textContent = `ccxpLite ${link.textContent}`;
+      }
+      footer.append(link);
+    }
+    shell.append(topSection, footer);
+
+    return {
+      shell,
+      loginSection,
+      loginValidationState,
+      captchaAutofillState,
+    };
+  }
+
+  function cleanLegacySupport(identifiedSurface: CcxpLiteLoginIdentifyResult) {
+    const { utilityLinks, serviceLink, cannotLoginLink, tabNavigation, tabContents } =
+      identifiedSurface;
     if (utilityLinks) {
       collapseLegacyUtilityRow(utilityLinks);
       removeNode(utilityLinks);
     }
-
-    topSection.append(headerSection);
 
     if (serviceLink) {
       collapseLegacyServiceRow(serviceLink);
@@ -232,23 +248,6 @@
         collapseLegacyThreeColumnRows(tabContent);
       }
     }
-
-    if (announcementTable && !announcementTable.hidden) {
-      bodySection.append(loginSection);
-      noticesSection.append(announcementTable);
-      bodySection.append(noticesSection);
-      topSection.append(bodySection);
-    } else {
-      topSection.append(loginSection);
-    }
-    shell.append(topSection);
-
-    return {
-      shell,
-      loginSection,
-      loginValidationState,
-      captchaAutofillState,
-    };
   }
 
   namespace.loginRewrite = {

@@ -1,15 +1,107 @@
 (function registerCcxpLiteSidebarRuntime(globalScope: typeof globalThis) {
   const runtimeScope = globalScope;
   const namespace = runtimeScope.CCXP_LITE ?? {};
-  const { shared, sidebarState, sidebarFavorites } = namespace;
-  if (!shared || !sidebarState || !sidebarFavorites) {
+  const { shared, sidebarState, uiLegacyStyle } = namespace;
+  if (!shared || !sidebarState || !uiLegacyStyle) {
     return;
   }
-  const { TOKENS, ensureThemeDocument, cleanLegacyAttributes } = shared;
+  const { TOKENS } = shared;
+  const { prepareLegacySurface } = uiLegacyStyle;
   const { getSidebarUiState, persistSidebarScroll } = sidebarState;
-  const { getScopedSessionStorage, INITIAL_MAIN_URL_STORAGE_KEY } = sidebarFavorites;
+  const INITIAL_MAIN_URL_STORAGE_KEY =
+    "ccxp-lite-sidebar-initial-main-url::/ccxp/INQUIRE/select_entry.php";
   const DESTINATION_LOAD_TIMEOUT_MS = 8000;
   const EXTERNAL_LINK_PATH_PREFIXES = ["/ccxp/INQUIRE/PE/1/14D/"] as const;
+  const destinationDisposers = new Map<Document, () => void>();
+  shared.addCleanupTask(() => {
+    for (const dispose of destinationDisposers.values()) {
+      dispose();
+    }
+    destinationDisposers.clear();
+  });
+
+  function disposeDestination(targetDocument: Document) {
+    destinationDisposers.get(targetDocument)?.();
+    destinationDisposers.delete(targetDocument);
+  }
+
+  function createDestinationFrame(
+    targetDocument: Document,
+    navDocument: Document,
+    linkItem: CcxpLiteSidebarLinkItem,
+    onStatus: (status: "loading" | "ready" | "error") => void,
+  ) {
+    disposeDestination(targetDocument);
+    const frame = targetDocument.createElement("iframe");
+    frame.className = "ccxp-lite-destination-frame";
+    frame.setAttribute("frameborder", "0");
+    frame.setAttribute("scrolling", "auto");
+    frame.setAttribute("allowTransparency", "true");
+    frame.title = linkItem.label;
+    const legacyMainFrame = getLegacyMainFrame();
+    let disposed = false;
+    let status: "loading" | "ready" | "error" = "loading";
+    const stopWaiting = () => {
+      globalThis.clearTimeout(timeoutId);
+      legacyMainFrame?.removeEventListener("load", syncFromLegacyMainFrame);
+    };
+    const settle = (nextStatus: "ready" | "error") => {
+      if (disposed || status !== "loading") {
+        return;
+      }
+      status = nextStatus;
+      stopWaiting();
+      frame.hidden = nextStatus !== "ready";
+      onStatus(nextStatus);
+    };
+    const onLoad = () => {
+      if (disposed || status === "error") {
+        return;
+      }
+      try {
+        simplifyEmbeddedFrame(frame);
+      } catch {
+        // Cross-origin destinations can load without allowing theme access.
+      }
+      settle("ready");
+    };
+    const syncFromLegacyMainFrame = () => {
+      if (disposed || status !== "loading" || !legacyMainFrame) {
+        return;
+      }
+      try {
+        const legacyHref = legacyMainFrame.contentWindow?.location.href ?? "";
+        if (legacyHref !== "" && legacyHref !== "about:blank" && frame.src !== legacyHref) {
+          frame.src = legacyHref;
+          return;
+        }
+        if (frame.contentDocument?.readyState === "complete") {
+          onLoad();
+        }
+      } catch {
+        // Rely on the destination load event when frame access is unavailable.
+      }
+    };
+    const timeoutId = globalThis.setTimeout(
+      () => {
+        settle("error");
+      },
+      DESTINATION_LOAD_TIMEOUT_MS,
+      undefined,
+    );
+    frame.addEventListener("load", onLoad);
+    legacyMainFrame?.addEventListener("load", syncFromLegacyMainFrame, { once: true });
+    destinationDisposers.set(targetDocument, () => {
+      disposed = true;
+      stopWaiting();
+      frame.removeEventListener("load", onLoad);
+    });
+    frame.hidden = true;
+    onStatus("loading");
+    activateLegacyLink(linkItem, navDocument, frame);
+    return frame;
+  }
+
   function shouldOpenLeafInDestination(linkItem: CcxpLiteSidebarLinkItem, navDocument: Document) {
     if ((linkItem.target ?? "main").toLowerCase() !== "main") {
       return false;
@@ -55,8 +147,7 @@
     if (!frameDocument) {
       return;
     }
-    ensureThemeDocument(frameDocument, "main");
-    cleanLegacyAttributes(frameDocument);
+    prepareLegacySurface(frameDocument, "main");
     frameDocument.body.classList.add(TOKENS.mainClass);
     // Force a style override as a last resort.
     frameDocument.body.style.setProperty("background-image", "none", "important");
@@ -86,7 +177,56 @@
     }
   }
 
+  function getScopedSessionStorage() {
+    try {
+      return (window.top ?? globalThis).sessionStorage;
+    } catch {
+      return undefined;
+    }
+  }
+
+  const RECENT_FUNCTIONS_KEY = "ccxp-lite-recent-functions";
+  const recentListeners = new Set<() => void>();
+  let recentIds: readonly string[] = [];
+  function getRecentFunctionIds(): readonly string[] {
+    try {
+      const parsed: unknown = JSON.parse(
+        getScopedSessionStorage()?.getItem(RECENT_FUNCTIONS_KEY) ?? "[]",
+      );
+      if (isArray(parsed) && parsed.every((id): id is string => typeof id === "string")) {
+        recentIds = [...new Set(parsed)].slice(0, 8);
+      }
+    } catch {
+      // Keep the in-memory history if session storage is unavailable.
+    }
+    return recentIds;
+  }
+
+  function subscribeRecentFunctions(listener: () => void) {
+    recentListeners.add(listener);
+    return () => {
+      recentListeners.delete(listener);
+    };
+  }
+
+  function recordRecentFunction(link: CcxpLiteSidebarLinkItem) {
+    const id = namespace.sidebarFavorites?.createLinkId(link);
+    if (id === undefined) {
+      return;
+    }
+    recentIds = [id, ...getRecentFunctionIds().filter((previous) => previous !== id)].slice(0, 8);
+    try {
+      getScopedSessionStorage()?.setItem(RECENT_FUNCTIONS_KEY, JSON.stringify(recentIds));
+    } catch {
+      // Navigation still works without storage.
+    }
+    for (const listener of recentListeners) {
+      listener();
+    }
+  }
+
   function openLeafInNewTab(activeLeaf: CcxpLiteSidebarLinkItem, navDocument: Document) {
+    recordRecentFunction(activeLeaf);
     const resolvedUrl = resolveLeafUrl(activeLeaf, navDocument);
     window.open(resolvedUrl, "_blank", "noopener");
   }
@@ -123,13 +263,14 @@
     navDocument: Document,
     destinationFrame?: HTMLIFrameElement,
   ) {
+    recordRecentFunction(linkItem);
     if (linkItem.clickLinkArgs) {
       const helperFrame = navDocument.querySelector<HTMLIFrameElement>("iframe[name='frame_7472']");
       const helperUrl = new URL("JH/JH01.php", navDocument.location.href);
       helperUrl.searchParams.set("ACIXSTORE", readAcixstore(navDocument.location.href));
       helperUrl.searchParams.set("name", linkItem.clickLinkArgs.name);
       helperUrl.searchParams.set("url", linkItem.clickLinkArgs.url);
-      if (helperFrame && helperFrame.contentWindow) {
+      if (helperFrame?.contentWindow) {
         const helperWindow = helperFrame.contentWindow;
         helperWindow.location.replace(helperUrl.toString());
       } else if (helperFrame) {
@@ -192,10 +333,13 @@
     return url.searchParams.get("ACIXSTORE") ?? "";
   }
   namespace.sidebarRuntime = {
-    DESTINATION_LOAD_TIMEOUT_MS,
+    getRecentFunctionIds,
+    subscribeRecentFunctions,
+    INITIAL_MAIN_URL_STORAGE_KEY,
     shouldOpenLeafInDestination,
     openLeafDestination,
-    simplifyEmbeddedFrame,
+    createDestinationFrame,
+    disposeDestination,
     getLegacyMainFrame,
     captureInitialMainFrameUrl,
     openLeafInNewTab,

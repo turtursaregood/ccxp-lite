@@ -41,22 +41,81 @@ html[data-ccxp-lite-scope="main"]
   background-color: transparent !important;
 }
 
-html[data-ccxp-lite-scope="main"] body,
-html[data-ccxp-lite-scope="main"] table,
-html[data-ccxp-lite-scope="main"] tbody,
-html[data-ccxp-lite-scope="main"] tr,
-html[data-ccxp-lite-scope="main"] td,
-html[data-ccxp-lite-scope="main"] th,
-html[data-ccxp-lite-scope="main"] input,
-html[data-ccxp-lite-scope="main"] select,
-html[data-ccxp-lite-scope="main"] textarea,
-html[data-ccxp-lite-scope="main"] button,
-html[data-ccxp-lite-scope="main"] a,
-html[data-ccxp-lite-scope="main"] font,
-html[data-ccxp-lite-scope="main"] div,
-html[data-ccxp-lite-scope="main"] span,
-html[data-ccxp-lite-scope="main"] p,
-html[data-ccxp-lite-scope="main"] li {
+html[data-ccxp-lite-scope="main"] th {
+  color: var(--ccxp-lite-type-body-strong-color) !important;
+}
+
+/* Kendo selections retain white text after the table background reset above. */
+html[data-ccxp-lite-scope="main"] .k-grid tr.k-state-selected {
+  background-color: var(--ccxp-lite-surface-muted) !important;
+  color: var(--ccxp-lite-type-body-color) !important;
+}
+
+html[data-ccxp-lite-scope="main"] .k-grid tr.k-state-selected > td {
+  color: var(--ccxp-lite-type-body-color) !important;
+}
+
+/* Align weekday headings and date links within the same calendar columns. */
+html[data-ccxp-lite-scope="main"] .k-calendar th,
+html[data-ccxp-lite-scope="main"] .k-calendar td > .k-link {
+  padding-inline: 0;
+  text-align: center;
+}
+
+html[data-ccxp-lite-scope="main"] .k-calendar td > .k-link {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+/* Keep calendar selection visible after the table background reset. */
+html[data-ccxp-lite-scope="main"] .k-calendar td.k-state-selected {
+  background-color: color-mix(
+    in srgb,
+    var(--ccxp-lite-primary) 16%,
+    var(--ccxp-lite-surface)
+  ) !important;
+}
+
+html[data-ccxp-lite-scope="main"] .k-calendar td.k-state-selected > .k-link {
+  color: var(--ccxp-lite-type-body-color) !important;
+}
+
+html[data-ccxp-lite-scope="main"] .k-calendar td.k-state-focused {
+  box-shadow: none;
+  outline: 1px solid var(--ccxp-lite-primary);
+  outline-offset: -1px;
+}
+
+/* CCXP paints section header rows with .class1 (white text on a blue band) in
+   its own stylesheet, so neither the colour attribute nor the inline style
+   rules below can reach them. Clearing the band above would leave white text on
+   the white page, hiding headings such as the 向度 groupings on the general
+   education listing, so restore a readable band here. */
+html[data-ccxp-lite-scope="main"] tr.class1,
+html[data-ccxp-lite-scope="main"] tr.class1 td,
+html[data-ccxp-lite-scope="main"] tr.class1 th {
+  background-color: var(--ccxp-lite-surface-muted) !important;
+  color: var(--ccxp-lite-type-body-strong-color) !important;
+  font-weight: var(--ccxp-lite-font-weight-strong);
+}
+
+/* Preserve Kendo icon fonts on spans and pager links. */
+html[data-ccxp-lite-scope="main"] body:where(:not(.k-icon)),
+html[data-ccxp-lite-scope="main"] table:where(:not(.k-icon)),
+html[data-ccxp-lite-scope="main"] tbody:where(:not(.k-icon)),
+html[data-ccxp-lite-scope="main"] tr:where(:not(.k-icon)),
+html[data-ccxp-lite-scope="main"] td:where(:not(.k-icon)),
+html[data-ccxp-lite-scope="main"] th:where(:not(.k-icon)),
+html[data-ccxp-lite-scope="main"] input:where(:not(.k-icon)),
+html[data-ccxp-lite-scope="main"] select:where(:not(.k-icon)),
+html[data-ccxp-lite-scope="main"] textarea:where(:not(.k-icon)),
+html[data-ccxp-lite-scope="main"] button:where(:not(.k-icon)),
+html[data-ccxp-lite-scope="main"] a:where(:not(.k-icon)),
+html[data-ccxp-lite-scope="main"] font:where(:not(.k-icon)),
+html[data-ccxp-lite-scope="main"] div:where(:not(.k-icon)),
+html[data-ccxp-lite-scope="main"] span:where(:not(.k-icon)),
+html[data-ccxp-lite-scope="main"] p:where(:not(.k-icon)),
+html[data-ccxp-lite-scope="main"] li:where(:not(.k-icon)) {
   font-family: var(--ccxp-lite-font-sans) !important;
 }
 
@@ -65,13 +124,17 @@ html[data-ccxp-lite-scope="main"] body {
   font: var(--ccxp-lite-type-body);
 }
 
-html[data-ccxp-lite-scope="main"] a:not(.button):not([class*="button" i]) {
+/* Calendar links use Kendo's date, disabled, and adjacent-month styles. */
+html[data-ccxp-lite-scope="main"]
+  a:not(.button):not([class*="button" i]):where(:not(.k-icon, .k-calendar *)) {
   color: var(--ccxp-lite-type-primary-link-color);
-  font: var(--ccxp-lite-type-primary-link);
+  font: inherit;
+  font-weight: var(--ccxp-lite-font-weight-semibold);
   text-decoration: none;
 }
 
-html[data-ccxp-lite-scope="main"] a:not(.button):not([class*="button" i]):hover {
+html[data-ccxp-lite-scope="main"]
+  a:not(.button):not([class*="button" i]):where(:not(.k-icon, .k-calendar *)):hover {
   color: var(--ccxp-lite-type-primary-link-color);
   transform: none !important;
   text-decoration: underline;
@@ -318,6 +381,7 @@ body.ccxp-lite-main-skin[data-ccxp-lite-sidebar-variant="classic"] {
   scrollbar-gutter: stable both-edges;
 }
 
+<<<<<<< HEAD
 /* General dark mode form controls styles */
 html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"]
   input:not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="checkbox"]):not(
@@ -385,4 +449,308 @@ html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] *[color] {
 /* Old typography tags */
 html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] font {
   color: inherit !important;
+}
+
+
+/* Staff History has separate, synchronized header and body tables. Keep both
+   wide enough for its IDs, dates, and labels instead of squeezing every column
+   into the viewport. Kendo's existing scroll containers handle the overflow. */
+html[data-ccxp-lite-scope="main"] body:has(#A_HEAD):has(#B_HEAD) #grid {
+  --ccxp-lite-staff-grid-min-width: 1900px;
+}
+
+html[data-ccxp-lite-scope="main"] body:has(#A_HEAD):has(#B_HEAD) #grid_pre {
+  --ccxp-lite-staff-grid-min-width: 2500px;
+}
+
+html[data-ccxp-lite-scope="main"]
+  body:has(#A_HEAD):has(#B_HEAD)
+  :is(#grid, #grid_pre)
+  > .k-grid-header
+  > .k-grid-header-wrap
+  > table,
+html[data-ccxp-lite-scope="main"]
+  body:has(#A_HEAD):has(#B_HEAD)
+  :is(#grid, #grid_pre)
+  > .k-grid-content
+  > table {
+  min-width: var(--ccxp-lite-staff-grid-min-width);
+}
+
+/* The host hover rule sets white text while its .hhh cells stay white. */
+html[data-ccxp-lite-scope="main"]
+  body:has(#A_HEAD):has(#B_HEAD)
+  :is(#grid, #grid_pre)
+  tbody
+  > tr:is(:hover, .k-state-hover, .k-state-selected)
+  > td {
+  background-color: var(--ccxp-lite-surface-muted, #f5f7f9) !important;
+  color: var(--ccxp-lite-type-body-color, #111827) !important;
+}
+
+body.ccxp-lite-main-skin:has(.ccxp-home-header) {
+  padding: 0;
+}
+.ccxp-home-info ul {
+  margin: 0;
+  padding: 0 0 0 20px;
+}
+.ccxp-home-info li {
+  padding: 0;
+}
+.ccxp-home-info li + li {
+  margin-top: var(--ccxp-lite-spacing-inset-sm);
+}
+.ccxp-home-content p {
+  font: var(--ccxp-lite-type-body-muted);
+  color: var(--ccxp-lite-type-body-muted-color);
+}
+
+.ccxp-home-header > .ccxp-home-contact {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0;
+  font: var(--ccxp-lite-type-utility);
+  white-space: nowrap;
+}
+
+.ccxp-home-content {
+  width: min(100%, 768px);
+  margin: clamp(48px, 12vh, 128px) auto 0;
+  padding: 0 24px 48px;
+}
+html[data-ccxp-lite-scope="main"] .ccxp-home-wordmark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ccxp-lite-spacing-md);
+  margin-bottom: 32px;
+  text-align: center;
+  font-family: Arial, sans-serif !important;
+  font-size: clamp(48px, 7vw, 76px);
+  font-weight: 600;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+}
+.ccxp-home-search-slot {
+  position: relative;
+  height: 56px;
+  z-index: 10;
+}
+.ccxp-home-search {
+  position: absolute;
+  inset: 0 0 auto;
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 12px;
+  padding: 0 20px;
+  min-height: 56px;
+  border: 1px solid var(--ccxp-lite-border);
+  border-radius: 28px;
+  background: var(--ccxp-lite-surface);
+  box-shadow: none;
+}
+.ccxp-home-search:focus-within {
+  outline: 2px solid var(--ccxp-lite-primary-focus-border);
+  outline-offset: 0;
+}
+.ccxp-home-search > svg {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+  color: var(--ccxp-lite-text-muted);
+}
+html[data-ccxp-lite-scope="main"] .ccxp-home-search > input {
+  width: 100%;
+  min-width: 0;
+  height: 54px;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  outline: none;
+  font: var(--ccxp-lite-type-home-control);
+}
+.ccxp-home-shortcuts {
+  margin-top: 32px;
+}
+.ccxp-home-shortcuts > h2 {
+  margin: 0 0 12px;
+  color: var(--ccxp-lite-text-muted);
+  font: var(--ccxp-lite-type-utility);
+}
+.ccxp-home-cards {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+.ccxp-home-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  min-height: 68px;
+  padding: 12px 16px;
+  border: 1px solid var(--ccxp-lite-border);
+  border-radius: var(--ccxp-lite-radius-input);
+  background: var(--ccxp-lite-surface);
+  color: var(--ccxp-lite-text);
+  text-align: left;
+  cursor: pointer;
+}
+.ccxp-home-card:hover {
+  border-color: var(--ccxp-lite-primary-focus-border);
+  background: var(--ccxp-lite-primary-hover-surface);
+}
+.ccxp-home-card:focus-visible {
+  outline: 2px solid var(--ccxp-lite-primary-focus-border);
+  outline-offset: 2px;
+}
+.ccxp-home-card-icon {
+  display: grid;
+  place-items: center;
+  flex: 0 0 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ccxp-lite-primary) 10%, white);
+  color: var(--ccxp-lite-brand);
+}
+.ccxp-home-card-icon svg {
+  width: 18px;
+  height: 18px;
+}
+.ccxp-home-card-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: var(--ccxp-lite-type-home-control);
+}
+@media (max-width: 520px) {
+  .ccxp-home-cards {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.ccxp-home-show-all {
+  display: flex;
+  margin: 12px 0 0 auto;
+  min-height: 40px;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--ccxp-lite-type-primary-link-color);
+  font: var(--ccxp-lite-type-body);
+  cursor: pointer;
+}
+.ccxp-home-show-all[hidden] {
+  display: none;
+}
+.ccxp-home-show-all:focus-visible {
+  outline: 2px solid var(--ccxp-lite-primary-focus-border);
+  outline-offset: 0;
+}
+
+.ccxp-home-search-results {
+  grid-column: 1 / -1;
+  min-width: 0;
+  max-height: min(360px, 50vh);
+  overflow-y: auto;
+  margin: 0 -8px;
+  padding: 4px 0 12px;
+  border: 0;
+  background: transparent;
+}
+.ccxp-home-search-results[hidden] {
+  display: none;
+}
+.ccxp-home-search-result {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  padding: 12px 16px;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  color: var(--ccxp-lite-text);
+  font: var(--ccxp-lite-type-home-control);
+  text-align: left;
+  cursor: pointer;
+}
+.ccxp-home-search-result:hover,
+.ccxp-home-search-result:focus-visible {
+  background: var(--ccxp-lite-surface-muted);
+  outline: none;
+}
+.ccxp-home-search-results p {
+  margin: 12px;
+  font: var(--ccxp-lite-type-home-control);
+}
+
+.ccxp-home-brand-logo {
+  width: clamp(48px, 7vw, 76px);
+  height: clamp(48px, 7vw, 76px);
+  object-fit: contain;
+  filter: var(--ccxp-lite-brand-logo-filter);
+}
+
+.ccxp-home-card-wrap {
+  position: relative;
+  min-width: 0;
+}
+.ccxp-home-card-wrap > .ccxp-home-card {
+  width: 100%;
+  padding-right: 52px;
+}
+.ccxp-home-card-wrap > .ccxp-lite-favorite-toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 40px;
+}
+.ccxp-home-card-wrap > .ccxp-lite-favorite-toggle:focus-visible {
+  outline: 2px solid var(--ccxp-lite-primary-focus-border);
+  border-radius: var(--ccxp-lite-radius-sm);
+}
+
+.ccxp-home-header.ccxp-lite-page-header {
+  border-bottom-color: transparent;
+}
+html[data-ccxp-lite-scope="main"] .ccxp-home-header > .ccxp-home-contact {
+  font: var(--ccxp-lite-type-primary-link) !important;
+}
+
+.ccxp-home-search > input::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+.ccxp-home-search-clear {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  margin-right: -12px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ccxp-lite-text-muted);
+  cursor: pointer;
+}
+.ccxp-home-search-clear[hidden] {
+  display: none;
+}
+.ccxp-home-search-clear:hover {
+  background: var(--ccxp-lite-surface-muted);
+}
+.ccxp-home-search-clear:focus-visible {
+  outline: 2px solid var(--ccxp-lite-primary-focus-border);
+  outline-offset: 0;
+>>>>>>> main
 }

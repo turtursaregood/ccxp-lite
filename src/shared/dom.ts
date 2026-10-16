@@ -13,7 +13,7 @@
   }
 
   function removeNode(node: ChildNode | undefined) {
-    if (node && node.parentNode) {
+    if (node?.parentNode) {
       node.remove();
     }
   }
@@ -123,12 +123,11 @@
   }
 
   function invalidateContext() {
-    if (namespace.isOrphan === true) {
-      return false;
+    if (namespace.isOrphan !== true) {
+      namespace.isOrphan = true;
+      triggerCleanup();
+      scheduleOrphanReload();
     }
-    namespace.isOrphan = true;
-    triggerCleanup();
-    scheduleOrphanReload();
     return false;
   }
 
@@ -248,8 +247,13 @@
   } = sharedTheme;
   const { getLocalizedStrings, normalizeLocale, rememberLocale, resolveLocaleFromDocument } =
     sharedLocale;
-  const { createBrandImage, createBrandCopy, createBrandPartnerIcon, createBrandPartnerLink } =
-    sharedBrand;
+  const {
+    createSupportLinks,
+    createBrandImage,
+    createBrandCopy,
+    createBrandPartnerIcon,
+    createBrandPartnerLink,
+  } = sharedBrand;
   namespace.shared = {
     TOKENS,
     STRINGS: LOCALIZED_STRINGS.zh,
@@ -265,6 +269,7 @@
     normalizeLocale,
     rememberLocale,
     resolveLocaleFromDocument,
+    createSupportLinks,
     createBrandImage,
     createBrandCopy,
     createBrandPartnerIcon,

@@ -1,3 +1,9 @@
+const legacyCaptchaOperations = globalThis.CCXP_LITE?.decaptchaShared;
+if (!legacyCaptchaOperations) {
+  throw new Error("Shared captcha operations are not available.");
+}
+const { createTensor, tensorGet } = legacyCaptchaOperations;
+
 function isArray<T>(value: unknown): value is T[] {
   return value !== null && typeof value === "object" && value.constructor === Array;
 }
@@ -38,26 +44,6 @@ async function loadImage(objectUrl: string): Promise<HTMLImageElement> {
     );
     image.src = objectUrl;
   });
-}
-
-function createTensor(
-  shape: readonly number[],
-  data: Float32Array | ArrayLike<number>,
-): CcxpLitePreparedTensor {
-  return {
-    shape: [...shape],
-    data: data instanceof Float32Array ? data : new Float32Array(data),
-  };
-}
-
-function tensorGet(tensor: CcxpLitePreparedTensor, indices: readonly number[]) {
-  let flatIndex = 0;
-  let stride = 1;
-  for (let axis = tensor.shape.length - 1; axis >= 0; axis--) {
-    flatIndex += indices[axis] * stride;
-    stride *= tensor.shape[axis];
-  }
-  return tensor.data[flatIndex];
 }
 
 function linear(
@@ -119,6 +105,7 @@ function getHeadInputVectors(
   const namespace = runtimeScope.CCXP_LITE;
   namespace.decaptcha = api;
 })(globalThis, (globalScope: typeof globalThis) => {
+  const { conv2d, decodeImageElement } = legacyCaptchaOperations;
   const runtimeScope = globalScope as typeof globalThis & {
     CCXP_LITE?: {
       decaptchaModel?: CcxpLiteDecaptchaModel;
@@ -165,28 +152,7 @@ function getHeadInputVectors(
 
   async function decodeImageData(imageBytes: unknown) {
     if (isCaptchaImageElement(imageBytes)) {
-      const image = imageBytes;
-      const width = image.naturalWidth > 0 ? image.naturalWidth : image.width;
-      const height = image.naturalHeight > 0 ? image.naturalHeight : image.height;
-      const canvas =
-        typeof OffscreenCanvas === "undefined"
-          ? runtimeScope.document.createElement("canvas")
-          : new OffscreenCanvas(width, height);
-      canvas.width = width;
-      canvas.height = height;
-      const context = canvas.getContext("2d", { willReadFrequently: true }) as
-        | OffscreenCanvasRenderingContext2D
-        | CanvasRenderingContext2D
-        | null;
-      if (!context) {
-        throw new Error("Failed to create 2d canvas context.");
-      }
-      context.drawImage(image, 0, 0);
-      return {
-        width,
-        height,
-        data: context.getImageData(0, 0, width, height).data,
-      };
+      return decodeImageElement(imageBytes);
     }
 
     const bytes = toUint8Array(imageBytes);
@@ -261,60 +227,6 @@ function getHeadInputVectors(
       }
     }
     return createTensor([3, height, usableWidth], tensorData);
-  }
-
-  function conv2d(
-    inputTensor: CcxpLitePreparedTensor,
-    weight: CcxpLitePreparedTensor,
-    bias?: CcxpLitePreparedTensor,
-    options: {
-      stride?: number;
-      padding?: number;
-      groups?: number;
-    } = {},
-  ) {
-    const stride = options.stride ?? 1;
-    const padding = options.padding ?? 0;
-    const groups = options.groups ?? 1;
-    const [, inHeight, inWidth] = inputTensor.shape;
-    const [outChannels, channelsPerGroup, kernelHeight, kernelWidth] = weight.shape;
-    const outHeight = Math.floor((inHeight + 2 * padding - kernelHeight) / stride) + 1;
-    const outWidth = Math.floor((inWidth + 2 * padding - kernelWidth) / stride) + 1;
-    const out = new Float32Array(outChannels * outHeight * outWidth);
-    const outChannelsPerGroup = outChannels / groups;
-    let outIndex = 0;
-    for (let outChannel = 0; outChannel < outChannels; outChannel++) {
-      const groupIndex = Math.floor(outChannel / outChannelsPerGroup);
-      const inputChannelOffset = groupIndex * channelsPerGroup;
-      for (let outY = 0; outY < outHeight; outY++) {
-        for (let outX = 0; outX < outWidth; outX++) {
-          let acc = bias ? bias.data[outChannel] : 0;
-          const inY0 = outY * stride - padding;
-          const inX0 = outX * stride - padding;
-          for (let channelIndex = 0; channelIndex < channelsPerGroup; channelIndex++) {
-            const inputChannel = inputChannelOffset + channelIndex;
-            for (let kernelY = 0; kernelY < kernelHeight; kernelY++) {
-              const inY = inY0 + kernelY;
-              if (inY < 0 || inY >= inHeight) {
-                continue;
-              }
-              for (let kernelX = 0; kernelX < kernelWidth; kernelX++) {
-                const inX = inX0 + kernelX;
-                if (inX < 0 || inX >= inWidth) {
-                  continue;
-                }
-                acc +=
-                  tensorGet(inputTensor, [inputChannel, inY, inX]) *
-                  tensorGet(weight, [outChannel, channelIndex, kernelY, kernelX]);
-              }
-            }
-          }
-          out[outIndex] = acc;
-          outIndex++;
-        }
-      }
-    }
-    return createTensor([outChannels, outHeight, outWidth], out);
   }
 
   function batchnorm2d(

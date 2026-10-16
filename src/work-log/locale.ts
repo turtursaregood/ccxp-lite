@@ -1,0 +1,1128 @@
+(function installWorkLogLanguage() {
+  // Transport responses must remain raw until imported into the visible document.
+  if (window.name.startsWith("ccxp-lite-pe14d-")) {
+    return;
+  }
+  let english = false;
+  let activeSection = "add";
+  const navigationKey = `ccxp-lite-work-log-view:${globalThis.location.pathname}`;
+  let searching = false;
+  let hasSearched = false;
+  try {
+    const saved = sessionStorage.getItem(navigationKey);
+    sessionStorage.removeItem(navigationKey);
+    if (saved !== null && saved !== "") {
+      const state = JSON.parse(saved) as {
+        section?: string;
+        english?: boolean;
+        time?: number;
+        hasSearched?: boolean;
+      };
+      if (Date.now() - (state.time ?? 0) < 60_000) {
+        if (["add", "records", "search"].includes(state.section ?? "")) {
+          activeSection = state.section === "records" ? "search" : (state.section ?? "add");
+        }
+        english = state.english === true;
+        hasSearched = state.hasSearched === true;
+      }
+    }
+  } catch {
+    // Storage can be unavailable in embedded legacy pages.
+  }
+  window.addEventListener("pagehide", () => {
+    try {
+      sessionStorage.setItem(
+        navigationKey,
+        JSON.stringify({
+          section: searching ? "search" : activeSection,
+          english,
+          hasSearched: hasSearched || searching,
+          time: Date.now(),
+        }),
+      );
+    } catch {
+      // Keep native navigation working when storage is unavailable.
+    }
+  });
+  const originals = new WeakMap<Text, string>();
+  const rendered = new WeakMap<Text, string>();
+  const buttonLabels = new WeakMap<HTMLInputElement, string>();
+  const departmentSearches = new Map<
+    HTMLSelectElement,
+    { destroy: () => void; refresh: () => void }
+  >();
+  const translations: Record<string, string> = {
+    "\u672C\u6B21\u6539\u7248\u914D\u5408\u300C\u52A9\u7406\u767B\u9304\u7CFB\u7D71\u300D\u9032\u884C\u8ABF\u6574\uFF0C\u5167\u5BB9\u5982\u4E0B\uFF1A":
+      "This update integrates the Assistant Registration System:",
+    // eslint-disable-next-line no-useless-computed-key -- Keep localized keys escaped for the ASCII source policy.
+    ["\u517C\u4EFB\u52A9\u7406\u8655\u7406\u8868\u5C07\u958B\u59CB\u9700\u8981\u586B\u5831\u6642\u6578"]:
+      "Part-time assistants must report their working hours.",
+    "\u5DE5\u6642\u7CFB\u7D71\u6642\u6578\u5360\u52A9\u7406\u767B\u9304\u7CFB\u7D71\u6642\u6578\u4E94\u6210?\u77F7A\u6838\u767C\u5168\u6578\u85AA\u8CC7":
+      "Full salary is paid when reported hours reach half the hours in the Assistant Registration System.",
+    "\u5982\u672A\u586B\u6EFF\uFF0C\u7531\u7CFB\u7D71\u767C\u4FE1\u901A\u77E5\u88DC\u586B\u6642\u6578\u5F8C\uFF0C\u5C07\u65BC\u88DC\u767C\u85AA\u8CC7\u7A0B\u5E8F\u4E2D\u6838\u767C\uFF0C\u66AB\u4E0D\u6838\u767C\u5176\u85AA\u8CC7\u3002":
+      "If hours are incomplete, the system will email a reminder. Salary is withheld until hours are completed and will then be paid through the supplemental payroll process.",
+
+    "\u300C\u52A9\u7406\u767B\u9304\u7CFB\u7D71\u300D\u4EFB\u52D9\u8CC7\u8A0A": "Task information",
+    "\u4EFB\u52D9\u8CC7\u8A0A": "Task information",
+    "\u300C\u52A9\u7406\u767B\u9304\u7CFB\u7D71\u300D\u5E8F\u865F":
+      "Assistant Registration System serial number",
+    "\u6B64\u7B46\u5DE5\u6642\u8CC7\u6599\u6B78\u5C6C": "Task assignment",
+    "\u4EFB\u52D9\u985E\u578B\u5C6C\u6027": "Task type",
+    "\u5831\u652F\u7CFB\u7D71": "Reimbursement system",
+    "\u8A08\u756B\u7DE8\u865F": "Project number",
+    "\u4EFB\u52D9\u958B\u59CB\u65E5\u671F": "Task start date",
+    "\u4EFB\u52D9\u7D50\u675F\u65E5\u671F": "Task end date",
+    "\u61C9\u586B\u6642\u6578": "Required hours",
+    "\u672C\u6708\u5DF2\u6838\u6642\u6578": "Approved hours this month",
+    "\u4EFB\u52D9\u5167\u5BB9": "Task description",
+    "\u986F\u793A\u300C104/9/24\u6539\u7248\u63D0\u9192\u300D\uFF08\u7B2C\u4E00\u6B21\u64CD\u4F5C\u524D\u8ACB\u52D9\u5FC5\u8A73\u95B1\uFF09":
+      "Show September 24, 2015 update notice (please read before first use)",
+    "\u96B1\u85CF\u300C104/9/24\u6539\u7248\u63D0\u9192\u300D\uFF08\u7B2C\u4E00\u6B21\u64CD\u4F5C\u524D\u8ACB\u52D9\u5FC5\u8A73\u95B1\uFF09":
+      "Hide September 24, 2015 update notice",
+    // eslint-disable-next-line no-useless-computed-key -- Keep localized keys escaped for the ASCII source policy.
+    ["\u63D0\u9192"]: "Reminder",
+  };
+  function splitDepartmentLabel(text: string): [string, string] | undefined {
+    let prefix = /^[A-Z0-9]+\s*-\s*/u.exec(text)?.[0];
+    if (prefix === undefined) {
+      return undefined;
+    }
+    if (text[prefix.length] === "/" && /\s/u.test(prefix.at(-1) ?? "")) {
+      prefix = prefix.slice(0, -1);
+    }
+    const rest = text.slice(prefix.length);
+    const separator = /(?<!\s)\s+\//u.exec(rest);
+    if (!separator) {
+      return undefined;
+    }
+    const translated = rest.slice(separator.index + separator[0].length).trimStart();
+    return [
+      prefix + rest.slice(0, separator.index),
+      prefix + (translated === "" ? "English name unavailable" : translated),
+    ];
+  }
+
+  function splitTranslatedLabel(text: string, separator: "/" | "("): [string, string] | undefined {
+    let lastHan = -1;
+    let selectedHan = -1;
+    let boundary: RegExpExecArray | undefined;
+    // Prefer the last Chinese label followed by an English translation. A slash in that translation
+    // remains part of it unless another Chinese label follows.
+    for (const match of text.matchAll(/[\u3400-\u9FFF]|\/\s*[A-Za-z]|\([A-Za-z]/gu)) {
+      if (match[0].startsWith(separator)) {
+        if (lastHan > selectedHan) {
+          boundary = match;
+          selectedHan = lastHan;
+        }
+      } else if (/^[\u3400-\u9FFF]$/u.test(match[0])) {
+        lastHan = match.index;
+      }
+    }
+    if (!boundary) {
+      return undefined;
+    }
+    const original = text.slice(0, boundary.index).trimEnd();
+    const translated = text.slice(boundary.index + boundary[0].length - 1);
+    if (
+      /[\n\r\u2028\u2029]/u.test(original) ||
+      (separator === "/" && /[\n\r\u2028\u2029]/u.test(translated))
+    ) {
+      return undefined;
+    }
+    return [original, translated];
+  }
+
+  function splitLabel(text: string): [string, string] | undefined {
+    const department = splitDepartmentLabel(text);
+    if (department) {
+      return department;
+    }
+    const slash = splitTranslatedLabel(text, "/");
+    if (slash) {
+      return slash;
+    }
+    const withoutDecoration = text.replace(/(?<![\uFF0D\s])[\uFF0D\s]+$/u, "");
+    const parenthesis = withoutDecoration.endsWith(")")
+      ? splitTranslatedLabel(withoutDecoration.slice(0, -1), "(")
+      : undefined;
+    if (parenthesis) {
+      return parenthesis;
+    }
+    if (text.includes("Necessary Column") && text.startsWith("*\u5FC5\u9078")) {
+      return ["*\u5FC5\u9078", "*Required"];
+    }
+    if (text.includes("Manual(Chinese only)")) {
+      return ["\u4E2D\u6587\u7248\u64CD\u4F5C\u8AAA\u660E", "Manual (Chinese only)"];
+    }
+    return undefined;
+  }
+
+  function createFallbackUpdateNotice(content: HTMLElement) {
+    const wrap = document.createElement("span");
+    wrap.className = "ccxp-lite-account-guide-info ccxp-lite-work-log-notice";
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "ccxp-lite-account-guide-info-button";
+    button.setAttribute("aria-controls", content.id);
+    button.setAttribute("aria-expanded", "false");
+    const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    icon.setAttribute("viewBox", "0 0 24 24");
+    icon.setAttribute("width", "1em");
+    icon.setAttribute("height", "1em");
+    icon.setAttribute("aria-hidden", "true");
+    icon.classList.add("ccxp-lite-account-guide-info-marker");
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", "M12 8h.01M11 12h1v5h1M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0");
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-width", "2");
+    path.setAttribute("stroke-linecap", "round");
+    icon.append(path);
+    const caption = document.createElement("span");
+    caption.className = "ccxp-lite-work-log-notice-label";
+    button.append(icon, caption);
+    content.classList.add("ccxp-lite-account-guide-info-popup");
+    content.style.removeProperty("display");
+    content.setAttribute("hidden", "");
+    wrap.append(button, content);
+    let pinned = false;
+    let hovered = false;
+    let suppressHover = false;
+    const sync = () => {
+      const open = pinned || (hovered && !suppressHover);
+      content.toggleAttribute("hidden", !open);
+      wrap.dataset.ccxpLitePopupOpen = String(open);
+      button.setAttribute("aria-expanded", String(open));
+    };
+    wrap.addEventListener("mouseenter", () => {
+      hovered = true;
+      suppressHover = false;
+      sync();
+    });
+    wrap.addEventListener("mouseleave", () => {
+      hovered = false;
+      suppressHover = false;
+      sync();
+    });
+    button.addEventListener("click", () => {
+      pinned = !pinned;
+      suppressHover = !pinned;
+      sync();
+    });
+    wrap.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        pinned = false;
+        suppressHover = true;
+        sync();
+        button.focus();
+      }
+    });
+    const outsideClick = (event: MouseEvent) => {
+      if (!wrap.isConnected) {
+        document.removeEventListener("click", outsideClick);
+        return;
+      }
+      if (!wrap.contains(event.target as Node | null)) {
+        pinned = false;
+        suppressHover = true;
+        sync();
+      }
+    };
+    document.addEventListener("click", outsideClick);
+    return wrap;
+  }
+
+  // Use the shared popover introduced by the UI component refactor when it is available. The
+  // fallback keeps work-log frames functional when the broader INQUIRE content script is absent.
+  function createUpdateNotice(content: HTMLElement) {
+    const shared = globalThis.CCXP_LITE?.uiPopover?.buildInfoPopoverContent(
+      document,
+      content,
+      "\u64CD\u4F5C\u8AAA\u660E",
+    );
+    if (!shared) {
+      return createFallbackUpdateNotice(content);
+    }
+    shared.classList.add("ccxp-lite-work-log-notice");
+    const button = shared.firstElementChild;
+    if (button instanceof HTMLButtonElement) {
+      const caption = document.createElement("span");
+      caption.className = "ccxp-lite-work-log-notice-label";
+      button.append(caption);
+    }
+    return shared;
+  }
+
+  function selectSection(event: Event) {
+    const input = event.currentTarget;
+    if (input instanceof HTMLInputElement && input.checked) {
+      activeSection = input.value;
+      render();
+    }
+  }
+
+  function renderSectionSwitch() {
+    const addPanel = document.querySelector<HTMLElement>("#insTask");
+    const searchPanel = document.querySelector<HTMLElement>("#queTask");
+    if (!addPanel || !searchPanel) {
+      return;
+    }
+    const records = document.querySelector<HTMLElement>("#listForm");
+    if (records && !searchPanel.contains(records)) {
+      searchPanel.append(records);
+    }
+    let group = document.querySelector<HTMLElement>("#ccxp-lite-work-log-sections");
+    if (!group) {
+      group = document.createElement("div");
+      group.id = "ccxp-lite-work-log-sections";
+      group.setAttribute("role", "radiogroup");
+      for (const [value, panelId] of [
+        ["add", "insTask"],
+        ["search", "queTask"],
+      ]) {
+        const label = document.createElement("label");
+        const input = document.createElement("input");
+        input.type = "radio";
+        input.name = "ccxp-lite-work-log-section";
+        input.value = value;
+        input.setAttribute("aria-controls", panelId);
+        input.addEventListener("change", selectSection);
+        label.append(input, document.createElement("span"));
+        group.append(label);
+      }
+      addPanel.before(group);
+    }
+    group.setAttribute("aria-label", english ? "Working hours" : "\u5DE5\u6642");
+    for (const input of group.querySelectorAll<HTMLInputElement>("input")) {
+      input.checked = input.value === activeSection;
+      const caption = input.nextElementSibling;
+      if (caption) {
+        const labels: Record<string, string> = english
+          ? { add: "Add hours", search: "Search hours" }
+          : {
+              add: "\u65B0\u589E\u5DE5\u6642",
+              search: "\u67E5\u8A62\u5DE5\u6642",
+            };
+        caption.textContent = labels[input.value];
+      }
+    }
+    document.documentElement.dataset.ccxpLiteWorkLogSection = activeSection;
+  }
+
+  function recordLabel(zh: string, en: string) {
+    const label = document.createElement("span");
+    label.dataset.recordZh = zh;
+    label.dataset.recordEn = en;
+    return label;
+  }
+
+  function departmentEmptyLabel() {
+    return english ? "No matching units" : "\u67E5\u7121\u7B26\u5408\u7684\u55AE\u4F4D";
+  }
+
+  function departmentSearchText(option: HTMLOptionElement) {
+    // Locale rendering can precede mounting; search both original languages in either UI locale.
+    return [...option.childNodes]
+      .map((node) => (node instanceof Text ? (originals.get(node) ?? node.data) : node.textContent))
+      .join("");
+  }
+
+  function refreshDepartmentSearches() {
+    for (const [select, mounted] of departmentSearches) {
+      if (select.isConnected) {
+        mounted.refresh();
+      } else {
+        mounted.destroy();
+        departmentSearches.delete(select);
+      }
+    }
+  }
+
+  function renderDepartmentControlLabels() {
+    refreshDepartmentSearches();
+    for (const [scope, inputName, selectName, idSuffix] of [
+      ["#insTask", "KI_SRV_ID", "I_SRV_ID", "add"],
+      ["#queForm", "KQ_SRV_ID", "Q_SRV_ID", "search"],
+    ]) {
+      const select = document.querySelector<HTMLSelectElement>(
+        `${scope} select[name="${selectName}"]`,
+      );
+      const cell = select?.closest("td");
+      const input = cell?.querySelector<HTMLInputElement>(
+        `input[type="text"][name="${inputName}"]`,
+      );
+      if (!select || !cell || !input) {
+        continue;
+      }
+      cell.classList.add("ccxp-lite-work-log-department-controls");
+      input.id ||= `ccxp-lite-work-log-department-code-${idSuffix}`;
+      select.id ||= `ccxp-lite-work-log-department-select-${idSuffix}`;
+      const searchUi = globalThis.CCXP_LITE?.uiSearchSelect;
+      if (searchUi && document.readyState !== "loading" && !departmentSearches.has(select)) {
+        // Replace the host's four-character code-only lookup, which clears name searches.
+        input.removeAttribute("onkeyup");
+        input.removeAttribute("maxlength");
+        departmentSearches.set(
+          select,
+          searchUi.mountSearchSelect(input, select, departmentSearchText, departmentEmptyLabel),
+        );
+      }
+      const heading = cell.closest("tr")?.querySelector<HTMLElement>("th");
+      if (heading) {
+        heading.id ||= `ccxp-lite-work-log-department-heading-${idSuffix}`;
+        input.setAttribute("aria-labelledby", heading.id);
+      } else {
+        input.setAttribute(
+          "aria-label",
+          english ? "Working department" : "\u5DE5\u4F5C\u55AE\u4F4D",
+        );
+      }
+      select.setAttribute("aria-label", english ? "Choose a unit" : "\u9078\u64C7\u55AE\u4F4D");
+    }
+  }
+
+  function renderApprovalFilters() {
+    const select = document.querySelector<HTMLSelectElement>('#queForm select[name="Q_PASS_MARK"]');
+    const cell = select?.closest("td");
+    const heading = cell?.closest("tr")?.querySelector<HTMLElement>("th");
+    if (!select || !cell || !heading || select.options.length < 3) {
+      return;
+    }
+    heading.id ||= "ccxp-lite-work-log-approval-heading";
+    heading.classList.add("ccxp-lite-work-log-approval-heading");
+    heading.textContent = english
+      ? "Filter by approval status"
+      : "\u4EE5\u5BE9\u6838\u72C0\u614B\u7BE9\u9078";
+    let filter = cell.querySelector<HTMLFieldSetElement>(".ccxp-lite-work-log-approval-filter");
+    if (!filter) {
+      const [allOption, approvedOption, unapprovedOption] = select.options;
+      filter = document.createElement("fieldset");
+      filter.className = "ccxp-lite-work-log-approval-filter";
+      filter.setAttribute("aria-labelledby", heading.id);
+      for (const [kind, option] of [
+        ["approved", approvedOption],
+        ["unapproved", unapprovedOption],
+      ] as const) {
+        const label = document.createElement("label");
+        const input = document.createElement("input");
+        input.type = "checkbox";
+        input.value = option.value;
+        input.dataset.ccxpLiteApprovalKind = kind;
+        input.defaultChecked = true;
+        const caption = document.createElement("span");
+        label.append(input, caption);
+        filter.append(label);
+      }
+      const inputs = filter.querySelectorAll<HTMLInputElement>('input[type="checkbox"]');
+      const approved = inputs[0];
+      const unapproved = inputs[1];
+      approved.checked = select.value === allOption.value || select.value === approvedOption.value;
+      unapproved.checked =
+        select.value === allOption.value || select.value === unapprovedOption.value;
+      filter.addEventListener("change", (event) => {
+        const changed = event.target;
+        if (!(changed instanceof HTMLInputElement)) {
+          return;
+        }
+        if (!approved.checked && !unapproved.checked) {
+          changed.checked = true;
+          return;
+        }
+        if (approved.checked && unapproved.checked) {
+          select.value = allOption.value;
+        } else {
+          select.value = approved.checked ? approvedOption.value : unapprovedOption.value;
+        }
+      });
+      select.classList.add("ccxp-lite-work-log-approval-select");
+      select.before(filter);
+    }
+    const approvedLabel = filter.querySelector<HTMLElement>(
+      '[data-ccxp-lite-approval-kind="approved"] + span',
+    );
+    const unapprovedLabel = filter.querySelector<HTMLElement>(
+      '[data-ccxp-lite-approval-kind="unapproved"] + span',
+    );
+    if (approvedLabel) {
+      approvedLabel.textContent = english ? "Approved" : "\u5DF2\u5BE9\u6838";
+    }
+    if (unapprovedLabel) {
+      unapprovedLabel.textContent = english ? "Not approved" : "\u672A\u5BE9\u6838";
+    }
+  }
+
+  function renderDateLabels() {
+    for (const input of document.querySelectorAll<HTMLInputElement>(
+      "input.ccxp-lite-native-date[data-ccxp-lite-date-label-zh]",
+    )) {
+      input.setAttribute(
+        "aria-label",
+        (english ? input.dataset.ccxpLiteDateLabelEn : input.dataset.ccxpLiteDateLabelZh) ?? "",
+      );
+    }
+  }
+
+  function renderResults() {
+    const records = document.querySelector<HTMLElement>("#listForm");
+    const table = records?.querySelector<HTMLTableElement>("table");
+    if (!records || !table) {
+      return;
+    }
+    // Returned records must remain accessible even without a saved navigation state.
+    const populated = [...table.rows].some(
+      (row) => row.cells.length >= 5 && row.cells[0].tagName === "TD",
+    );
+    records.hidden = !hasSearched && !populated && Boolean(document.querySelector("#queForm"));
+    // Replace the legacy dated caption without touching result cells or form controls.
+    for (const caption of document.querySelectorAll<HTMLElement>(
+      "#listForm .H12, #listForm font, #listForm h2, #listForm h3, #listForm caption",
+    )) {
+      if (
+        !caption.closest("#queForm, #insTask") &&
+        /Search Result from|\u7684\u67E5\u8A62\u7D50\u679C/u.test(caption.textContent)
+      ) {
+        caption.hidden = true;
+      }
+    }
+    let heading = records.querySelector<HTMLElement>(".ccxp-lite-work-log-results-heading");
+    if (!heading) {
+      heading = document.createElement("h2");
+      heading.className = "ccxp-lite-work-log-results-heading";
+      heading.dataset.recordZh = "\u641C\u5C0B\u7D50\u679C";
+      heading.dataset.recordEn = "Search results";
+      table.before(heading);
+    }
+  }
+
+  function groupRecordCells(row: HTMLTableRowElement, cells: readonly HTMLTableCellElement[]) {
+    for (const indices of [[1], [2, 3], [5, 6], [9, 8], [13, 14]]) {
+      const cell = row.insertCell();
+      for (const index of indices) {
+        const part = document.createElement("div");
+        if (index === 3 || index === 8) {
+          part.className = "ccxp-lite-record-secondary";
+          part.append(
+            recordLabel(
+              index === 3 ? "\u6642\u6578\uFF1A" : "\u6838\u5B9A\u6642\u6578\uFF1A",
+              index === 3 ? "Hours: " : "Approved hours: ",
+            ),
+          );
+        }
+        part.append(...cells[index].childNodes);
+        cell.append(part);
+      }
+    }
+  }
+
+  function simplifyRecordRow(
+    recordRow: HTMLTableRowElement,
+    columnCount: number,
+    detailFields: ReadonlyArray<[number, string, string]>,
+  ) {
+    const row = recordRow;
+    const cells = [...row.cells];
+    if (cells.length === 1) {
+      cells[0].colSpan = columnCount;
+      return;
+    }
+    if (cells.length !== 15 || cells.some((cell) => cell.colSpan !== 1)) {
+      const summary = document.createElement("div");
+      summary.className = "ccxp-lite-record-totals";
+      for (const cell of cells) {
+        const part = document.createElement("span");
+        part.append(...cell.childNodes);
+        summary.append(part);
+      }
+      row.textContent = "";
+      const cell = row.insertCell();
+      cell.colSpan = columnCount;
+      cell.append(summary);
+      return;
+    }
+    const detailRow = document.createElement("tr");
+    detailRow.className = "ccxp-lite-record-detail";
+    detailRow.id = `ccxp-lite-record-detail-${row.rowIndex}`;
+    detailRow.hidden = true;
+    const detailCell = detailRow.insertCell();
+    detailCell.colSpan = columnCount;
+    const details = document.createElement("dl");
+    for (const [index, zh, en] of detailFields) {
+      const field = document.createElement("div");
+      const term = document.createElement("dt");
+      term.append(recordLabel(zh, en));
+      const value = document.createElement("dd");
+      value.append(...cells[index].childNodes);
+      field.append(term, value);
+      details.append(field);
+    }
+    detailCell.append(details);
+    row.textContent = "";
+    groupRecordCells(row, cells);
+    const actions = row.cells[4];
+    actions.classList.add("ccxp-lite-record-actions");
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "ccxp-lite-record-toggle";
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-controls", detailRow.id);
+    toggle.append(recordLabel("\u8A73\u7D30\u8CC7\u6599", "Details"));
+    toggle.addEventListener("click", () => {
+      detailRow.hidden = !detailRow.hidden;
+      toggle.setAttribute("aria-expanded", String(!detailRow.hidden));
+    });
+    actions.append(toggle);
+    row.after(detailRow);
+  }
+
+  function simplifyRecords() {
+    const table = document.querySelector<HTMLTableElement>("#listForm table");
+    if (!table || table.dataset.ccxpLiteRecords === "true") {
+      return;
+    }
+    const header = table.rows.item(0);
+    // Leave unfamiliar legacy table variants intact.
+    if (header?.cells.length !== 15 || !header.textContent.includes("\u5DE5\u4F5C\u65E5\u671F")) {
+      return;
+    }
+    if (
+      [...table.rows]
+        .slice(1)
+        .some(
+          (row) =>
+            row.cells.length !== 1 &&
+            !row.textContent.includes("\u7D2F\u8A08") &&
+            (row.cells.length !== 15 || [...row.cells].some((cell) => cell.colSpan !== 1)),
+        )
+    ) {
+      return;
+    }
+    table.dataset.ccxpLiteRecords = "true";
+    table.removeAttribute("width");
+    const headings = [
+      ["\u5DE5\u4F5C\u65E5\u671F", "Working date"],
+      ["\u5DE5\u4F5C\u6642\u9593\uFF0F\u6642\u6578", "Time / hours"],
+      ["\u5DE5\u4F5C\u55AE\u4F4D\uFF0F\u5167\u5BB9", "Department / work"],
+      ["\u5BE9\u6838\u72C0\u614B\uFF0F\u6838\u5B9A\u6642\u6578", "Approval / approved hours"],
+      ["\u64CD\u4F5C", "Actions"],
+    ];
+    const detailFields: Array<[number, string, string]> = [
+      [0, "\u5E8F\u865F", "Record number"],
+      [4, "\u52A9\u7406\u767B\u9304\u7CFB\u7D71\u5E8F\u865F", "Assistant registration number"],
+      [7, "\u5DE5\u4F5C\u8005\u767B\u9304\uFF0F\u4FEE\u6539\u6642\u9593", "Registered / modified"],
+      [
+        10,
+        "\u5BE9\u6838\uFF0F\u53D6\u6D88\u5BE9\u6838\u6642\u9593\u53CA\u4EBA\u54E1",
+        "Approval / cancellation history",
+      ],
+      [11, "\u99C1\u56DE\u539F\u56E0", "Rejection reason"],
+      [12, "\u99C1\u56DE\u6642\u9593\u53CA\u4EBA\u54E1", "Rejection history"],
+    ];
+    const rows = [...table.rows].slice(1);
+    for (const row of rows) {
+      simplifyRecordRow(row, headings.length, detailFields);
+    }
+    header.textContent = "";
+    for (const [zh, en] of headings) {
+      const cell = document.createElement("th");
+      cell.scope = "col";
+      cell.append(recordLabel(zh, en));
+      header.append(cell);
+    }
+  }
+
+  function createTaskCard(
+    row: HTMLTableRowElement,
+    fieldDefinitions: ReadonlyArray<{ index: number; zh: string; en: string; full?: boolean }>,
+  ) {
+    const cells = [...row.querySelectorAll("td")];
+    const card = document.createElement("div");
+    card.className = "ccxp-lite-task-card";
+
+    const radio = cells[0].querySelector<HTMLInputElement>('input[type="radio"]');
+    const headerLabel = document.createElement("label");
+    headerLabel.className = "ccxp-lite-task-card-header";
+    if (radio) {
+      headerLabel.append(radio);
+    }
+    const headerTitle = document.createElement("span");
+    headerTitle.className = "ccxp-lite-task-card-title";
+    headerTitle.append(
+      recordLabel("\u6B64\u7B46\u5DE5\u6642\u8CC7\u6599\u6B78\u5C6C", "Task assignment"),
+    );
+    headerLabel.append(headerTitle);
+
+    const serialNumber = cells[1].textContent.trim();
+    if (serialNumber !== "") {
+      const serialBadge = document.createElement("span");
+      serialBadge.className = "ccxp-lite-task-card-serial";
+      serialBadge.textContent = `#${serialNumber}`;
+      headerLabel.append(serialBadge);
+    }
+    card.append(headerLabel);
+
+    const dl = document.createElement("dl");
+    dl.className = "ccxp-lite-task-card-fields";
+    for (const field of fieldDefinitions) {
+      const item = document.createElement("div");
+      item.className = "ccxp-lite-task-card-field";
+      if (field.full === true) {
+        item.classList.add("ccxp-lite-task-card-field-full");
+      }
+      const dt = document.createElement("dt");
+      dt.append(recordLabel(field.zh, field.en));
+      const dd = document.createElement("dd");
+      const cell = cells[field.index];
+      const val = cell.textContent.trim();
+      dd.textContent = val === "" ? "\u2014" : val;
+      item.append(dt, dd);
+      dl.append(item);
+    }
+    card.append(dl);
+    card.addEventListener("click", (event) => {
+      if (radio && event.target !== radio && !radio.checked) {
+        radio.checked = true;
+        radio.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    });
+    return card;
+  }
+
+  function simplifyTaskInformation() {
+    const taskRow = document.querySelector<HTMLTableRowElement>("#insTask #trLabSerial");
+    const table = taskRow?.querySelector<HTMLTableElement>("table");
+    if (!taskRow || !table || table.dataset.ccxpLiteTaskGrid === "true") {
+      return;
+    }
+    const dataRows = [...table.querySelectorAll("tr")].filter(
+      (r) => r.querySelectorAll("td").length >= 10,
+    );
+    if (dataRows.length === 0) {
+      return;
+    }
+    table.dataset.ccxpLiteTaskGrid = "true";
+    table.setAttribute("hidden", "");
+
+    let container = taskRow.querySelector<HTMLDivElement>(".ccxp-lite-task-grid");
+    if (!container) {
+      container = document.createElement("div");
+      container.className = "ccxp-lite-task-grid";
+      table.after(container);
+    }
+    container.textContent = "";
+
+    const fieldDefinitions: Array<{
+      index: number;
+      zh: string;
+      en: string;
+      full?: boolean;
+    }> = [
+      { index: 2, zh: "\u4EFB\u52D9\u985E\u578B\u5C6C\u6027", en: "Task type" },
+      { index: 3, zh: "\u5831\u652F\u7CFB\u7D71", en: "Reimbursement system" },
+      { index: 4, zh: "\u8A08\u756B\u7DE8\u865F", en: "Project number" },
+      { index: 5, zh: "\u4EFB\u52D9\u958B\u59CB\u65E5\u671F", en: "Task start date" },
+      { index: 6, zh: "\u4EFB\u52D9\u7D50\u675F\u65E5\u671F", en: "Task end date" },
+      { index: 7, zh: "\u61C9\u586B\u6642\u6578", en: "Required hours" },
+      { index: 8, zh: "\u672C\u6708\u5DF2\u6838\u6642\u6578", en: "Approved hours this month" },
+      { index: 9, zh: "\u4EFB\u52D9\u5167\u5BB9", en: "Task description", full: true },
+    ];
+
+    for (const row of dataRows) {
+      container.append(createTaskCard(row, fieldDefinitions));
+    }
+  }
+
+  function ensureNavigation() {
+    let nav = document.querySelector<HTMLElement>("#ccxp-lite-work-log-nav");
+    if (nav) {
+      return nav;
+    }
+    nav =
+      globalThis.CCXP_LITE?.uiDisplay?.createPageHeader(document) ??
+      document.createElement("header");
+    nav.classList.add("ccxp-lite-page-header");
+    nav.id = "ccxp-lite-work-log-nav";
+    const label = document.createElement("label");
+    label.className = "ccxp-lite-work-log-language";
+    const caption = document.createElement("span");
+    caption.textContent = "English";
+    const toggle = document.createElement("input");
+    toggle.type = "checkbox";
+    toggle.className = "ccxp-lite-work-log-switch";
+    toggle.setAttribute("role", "switch");
+    toggle.setAttribute("aria-label", "English");
+    toggle.addEventListener("change", () => {
+      english = toggle.checked;
+      render();
+    });
+    label.append(caption, toggle);
+    nav.append(label);
+    const manual = document.querySelector<HTMLAnchorElement>('a[href*="20141023_Manual.pdf"]');
+    const content = document.createElement("div");
+    content.id = "ccxp-lite-work-log-help-content";
+    if (manual) {
+      content.append(manual);
+    }
+    const slides = document.querySelector<HTMLAnchorElement>('a[href*="goo.gl"]');
+    if (slides) {
+      content.append(slides);
+    }
+    const notice = document.querySelector<HTMLElement>("#noticeDiv2");
+    if (notice) {
+      const details = document.createElement("details");
+      const summary = document.createElement("summary");
+      summary.className = "ccxp-lite-work-log-update-label";
+      notice.style.removeProperty("display");
+      details.append(summary, notice);
+      content.append(details);
+      document.querySelector("#noticeDiv")?.remove();
+    }
+    const contact = document.querySelector("#divContact");
+    if (contact) {
+      while (contact.nextElementSibling?.tagName === "BR") {
+        contact.nextElementSibling.remove();
+      }
+      content.append(contact);
+    }
+    nav.insertBefore(createUpdateNotice(content), label);
+    const title = document.querySelector("#divTitle");
+    if (title) {
+      while (title.nextElementSibling?.tagName === "BR") {
+        title.nextElementSibling.remove();
+      }
+      const heading = document.createElement("h1");
+      heading.id = title.id;
+      heading.append(...title.childNodes);
+      title.replaceWith(heading);
+      nav.prepend(heading);
+    }
+    document.body.prepend(nav);
+    return nav;
+  }
+
+  function renderReminders() {
+    for (const reminder of document.querySelectorAll<HTMLElement>("td > span")) {
+      const text = reminder.textContent;
+      if (
+        text.includes("\u63D0\u9192\uFF1A\u70BA\u65B9\u4FBF\u65B0\u589E\u8CC7\u6599") ||
+        text.includes("\u63D0\u9192\uFF1A\u8ACB\u76E1\u91CF\u586B\u9078\u641C\u5C0B\u689D\u4EF6")
+      ) {
+        if (reminder.nextElementSibling?.tagName === "BR") {
+          reminder.nextElementSibling.remove();
+        }
+        reminder.remove();
+      } else if (
+        text.includes("\u70BA\u514D\u8207\u5831\u5E33\u8CC7\u6599\u4E0D\u4E00") ||
+        reminder.dataset.ccxpLiteReminder === "approval"
+      ) {
+        reminder.dataset.ccxpLiteReminder = "approval";
+        reminder.textContent = english
+          ? "To keep reimbursement records consistent, ask your working department to cancel approval before changing approved records."
+          : "\u70BA\u514D\u8207\u5831\u5E33\u8CC7\u6599\u4E0D\u4E00\uFF0C\u5982\u9808\u7570\u52D5\u5DF2\u5BE9\u6838\u8CC7\u6599\uFF0C\u8ACB\u5148\u8ACB\u5DE5\u4F5C\u55AE\u4F4D\u53D6\u6D88\u5BE9\u6838";
+      }
+    }
+  }
+
+  function renderNavigationLabels(nav: HTMLElement) {
+    const manual = nav.querySelector<HTMLAnchorElement>('a[href*="20141023_Manual.pdf"]');
+    if (manual) {
+      manual.textContent = english ? "Manual (PDF)" : "\u64CD\u4F5C\u8AAA\u660E\uFF08PDF\uFF09";
+    }
+    const updateLabel = nav.querySelector(".ccxp-lite-work-log-update-label");
+    if (updateLabel) {
+      updateLabel.textContent = english
+        ? "2015 update notice"
+        : "104 \u5E74\u6539\u7248\u63D0\u9192";
+    }
+    renderReminders();
+    const noticeLabel = nav.querySelector(".ccxp-lite-work-log-notice-label");
+    if (noticeLabel) {
+      noticeLabel.textContent = english ? "Instructions" : "\u64CD\u4F5C\u8AAA\u660E";
+    }
+    const noticeButton = nav.querySelector<HTMLButtonElement>(
+      ".ccxp-lite-work-log-notice > button",
+    );
+    if (noticeButton) {
+      noticeButton.setAttribute(
+        "aria-label",
+        english ? "Instructions" : "\u64CD\u4F5C\u8AAA\u660E",
+      );
+    }
+    nav.setAttribute("aria-label", english ? "Page navigation" : "\u9801\u9762\u5C0E\u89BD");
+    const toggle = nav.querySelector<HTMLInputElement>("input");
+    if (toggle) {
+      toggle.checked = english;
+      toggle.setAttribute("aria-checked", String(english));
+    }
+  }
+
+  function preparePrimaryAction(primary: HTMLInputElement) {
+    if (primary.closest(".ccxp-lite-work-log-actions")) {
+      return;
+    }
+    const cell = primary.closest("td");
+    if (!cell) {
+      return;
+    }
+    const actions = document.createElement("div");
+    actions.className = "ccxp-lite-work-log-actions";
+    const reset = cell.querySelector<HTMLInputElement>('input[type="reset"]');
+    primary.classList.add("ccxp-lite-action-control-primary");
+    cell.append(actions);
+    if (reset) {
+      actions.append(reset);
+    }
+    actions.append(primary);
+    const table = cell.closest("table");
+    const row = cell.closest("tr");
+    if (table && row?.cells.length === 1 && primary.form?.contains(table) === true) {
+      table.after(actions);
+      // Preserve any remaining host controls while removing the decorative action row.
+      for (const control of row.querySelectorAll("input, select, textarea, button")) {
+        actions.prepend(control);
+      }
+      row.remove();
+    }
+  }
+
+  function prepareFormLayout() {
+    for (const primary of document.querySelectorAll<HTMLInputElement>(
+      '#insTask input[type="submit"][onclick*="\'ins\'"], #queForm input[type="submit"][onclick*="\'que\'"]',
+    )) {
+      preparePrimaryAction(primary);
+    }
+    for (const table of document.querySelectorAll<HTMLTableElement>(
+      "#insTask table, #queForm table",
+    )) {
+      if (table.closest("#listForm") || table.parentElement?.closest("table")) {
+        continue;
+      }
+      table.classList.add("ccxp-lite-work-log-form-fields");
+      table.setAttribute("role", "presentation");
+    }
+  }
+
+  function renderButtonLabels() {
+    for (const button of document.querySelectorAll<HTMLInputElement>(
+      'input[type="submit"], input[type="reset"], input[type="button"]',
+    )) {
+      const original = buttonLabels.get(button) ?? button.value;
+      buttonLabels.set(button, original);
+      const pair = splitLabel(original);
+      if (pair) {
+        button.value = pair[english ? 1 : 0];
+      }
+    }
+  }
+
+  function translateTitle(original: string, text: string) {
+    const isEnglishTitle = /[A-Za-z]/u.test(text);
+    return isEnglishTitle === english
+      ? original
+          .replace("\u570B\u7ACB\u6E05\u83EF\u5927\u5B78", "")
+          .replace("National Tsing Hua University", "")
+          .trim()
+      : "";
+  }
+
+  function translateText(parent: HTMLElement, original: string, text: string) {
+    const pair = splitLabel(text);
+    if (parent.closest("#divTitle")) {
+      return translateTitle(original, text);
+    }
+    if (parent.closest("#divContact")) {
+      const isEnglishContact = parent.closest(".engContent") !== null;
+      const contact = english
+        ? "For assistance, contact your working department first, then the Personnel Office."
+        : "\u64CD\u4F5C\u554F\u984C\u8ACB\u5148\u6D3D\u5DE5\u4F5C\u55AE\u4F4D\u5F8C\u6D3D\u4EBA\u4E8B\u5BA4";
+      return isEnglishContact === english ? contact : "";
+    }
+    if (pair) {
+      return pair[english ? 1 : 0];
+    }
+    if (parent.closest(".engContent")) {
+      return english ? original : "";
+    }
+    if (Object.hasOwn(translations, text)) {
+      return english ? translations[text] : original;
+    }
+    return translateNoticeText(parent, original, text);
+  }
+
+  function translateNoticeText(parent: HTMLElement, original: string, text: string) {
+    if (
+      text.startsWith(
+        "\u63D0\u9192\u60A8\uFF01\u76EE\u524D\u6240\u9078\u4E4B\u5DE5\u4F5C\u65E5\u671F",
+      )
+    ) {
+      return english
+        ? "No tasks were found for this date. Please register in the Assistant Registration System first."
+        : "\u67E5\u7121\u6B64\u65E5\u671F\u5167\u4E4B\u4EFB\u52D9\uFF0C\u8ACB\u5148\u81F3\u52A9\u7406\u767B\u9304\u7CFB\u7D71\u767B\u9304\u8CC7\u6599\u3002";
+    }
+    if (parent.id === "noticeDiv2") {
+      const updates: Record<string, string> = {
+        "1.": "1. For work from October 1, 2015 onward, part-time assistants must first register their task in the Assistant Registration System.",
+        "2.": "2. Task information is retrieved for the selected working date. Without a registered task, hours cannot be recorded and salary cannot be claimed.",
+        "3.": "3. Update any hours entered before this release for work from October 1, 2015 onward to match the Assistant Registration System, so your department can claim salary.",
+      };
+      const prefix = /^[123]\./u.exec(text)?.[0];
+      if (prefix !== undefined) {
+        return english ? updates[prefix] : original;
+      }
+    }
+    return translateDuplicateText(parent, original, text);
+  }
+
+  function translateDuplicateText(parent: HTMLElement, original: string, text: string) {
+    if (parent.querySelector(".engContent") && /[\u3400-\u9FFF]/u.test(text)) {
+      return english ? "" : original;
+    }
+    if (
+      parent.matches("a") &&
+      parent.parentElement?.querySelector(".engContent") &&
+      !parent.closest(".engContent")
+    ) {
+      return english ? "" : original;
+    }
+    return original;
+  }
+
+  function removeRequiredPrefix(text: string, prefix: RegExp) {
+    const trimmed = text
+      .trimStart()
+      .replace(/^[*\uFF0A]/u, "")
+      .trimStart();
+    return prefix.test(trimmed) ? trimmed.replace(prefix, "") : text;
+  }
+
+  function renderTextNode(textNode: Text) {
+    const node = textNode;
+    const parent = node.parentElement;
+    if (
+      !parent ||
+      parent.closest(
+        "script, style, noscript, textarea, [contenteditable], [data-ccxp-lite-reminder], [data-record-zh], a[href*='20141023_Manual.pdf'], .ccxp-lite-work-log-language, .ccxp-lite-work-log-notice-label, .ccxp-lite-work-log-update-label, .ccxp-lite-work-log-department-code-label, .ccxp-lite-work-log-department-select-label, .ccxp-lite-work-log-department-status, .ccxp-lite-work-log-approval-heading, .ccxp-lite-work-log-approval-filter, #ccxp-lite-work-log-sections",
+      )
+    ) {
+      return;
+    }
+    let original = originals.get(node);
+    if (original === undefined || node.data !== rendered.get(node)) {
+      original = node.data;
+      originals.set(node, original);
+    }
+    const text = original.trim();
+    if (text === "") {
+      return;
+    }
+    let next = translateText(parent, original, text);
+    if (parent.closest("#insTask td > span, #queForm td > span")) {
+      next = removeRequiredPrefix(next, /^(?:\u5FC5\u9078|\u5FC5\u586B)\s*/u);
+      next = removeRequiredPrefix(next, /^(?:Necessary Column|Required)\s*/iu);
+      if (/^[*\uFF0A]$/u.test(next.trim())) {
+        next = "";
+      }
+    }
+    next = next.replace(
+      "\uFF08\u6700\u591A15\u500B\u4E2D\u82F1\u6587\u6578\u5B57\uFF0C\u8ACB\u52FF\u8F38\u5165\u9664\u7A7A\u683C\u6216\u5E95\u7DDA\u7684\u534A\u5F62\u7279\u6B8A\u7B26\u865F\uFF09",
+      "\u6700\u591A15\u500B\u5B57\u5143\uFF0C\u50C5\u9650\u4E2D\u82F1\u6587\u3001\u6578\u5B57\u3001\u7A7A\u683C\u6216\u5E95\u7DDA",
+    );
+    next = next.replaceAll(/\u63D0\u9192[\uFF1A:]\s*/gu, "");
+    next = next.replace(
+      "\u300C\u52A9\u7406\u767B\u9304\u7CFB\u7D71\u300D\u4EFB\u52D9\u8CC7\u8A0A",
+      "\u4EFB\u52D9\u8CC7\u8A0A",
+    );
+    // Labels are changed in place; controls, values, and host event handlers stay intact.
+    node.data = next;
+    rendered.set(node, next);
+    if (parent instanceof HTMLOptionElement && parent.hasAttribute("label")) {
+      parent.label = next;
+    }
+  }
+
+  function render() {
+    observer.disconnect();
+    if (!document.querySelector("#divTitle, #listForm table")) {
+      observe();
+      return;
+    }
+    const nav = ensureNavigation();
+    renderNavigationLabels(nav);
+    document.documentElement.lang = english ? "en" : "zh-Hant";
+    document.documentElement.dataset.ccxpLiteWorkLogLanguage = english ? "en" : "zh";
+    if (!document.querySelector("#insTask") && document.querySelector("#listForm")) {
+      activeSection = "search";
+      document.documentElement.dataset.ccxpLiteWorkLogSection = activeSection;
+    }
+    renderSectionSwitch();
+    prepareFormLayout();
+    renderDepartmentControlLabels();
+    renderApprovalFilters();
+    renderDateLabels();
+    renderResults();
+    simplifyRecords();
+    simplifyTaskInformation();
+    for (const label of document.querySelectorAll<HTMLElement>("[data-record-zh]")) {
+      label.textContent = (english ? label.dataset.recordEn : label.dataset.recordZh) ?? "";
+    }
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const nodes: Text[] = [];
+    while (walker.nextNode()) {
+      nodes.push(walker.currentNode as Text);
+    }
+    for (const node of nodes) {
+      renderTextNode(node);
+    }
+    renderButtonLabels();
+    observe();
+  }
+
+  // Restore canonical values before legacy inline handlers call form.submit(). That native method
+  // bypasses the submit event, so capture clicks as well.
+  function prepareSubmission(event: Event) {
+    const { target } = event;
+    if (!(target instanceof Element)) {
+      return;
+    }
+    const form = target.closest("form");
+    if (
+      !form ||
+      (event.type === "click" &&
+        !target.matches('input[type="submit"], input[type="button"], button[type="submit"]'))
+    ) {
+      return;
+    }
+    for (const button of form.querySelectorAll<HTMLInputElement>("input")) {
+      const original = buttonLabels.get(button);
+      if (original !== undefined) {
+        button.value = original;
+      }
+    }
+    searching = form.id === "queForm";
+    queueMicrotask(() => {
+      if (event.defaultPrevented) {
+        searching = false;
+      }
+      render();
+    });
+  }
+  document.addEventListener("ccxp-lite-work-log-searched", () => {
+    hasSearched = true;
+  });
+  document.addEventListener("click", prepareSubmission, true);
+  document.addEventListener("submit", prepareSubmission, true);
+  const observer = new MutationObserver(render);
+  function observe() {
+    observer.observe(document.documentElement, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+    });
+  }
+  observe();
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", render, { once: true });
+  } else {
+    render();
+  }
+})();

@@ -1,0 +1,121 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Check
+        run: bun run check
+
+      - name: Install browser test runtime
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Test native work-log submissions
+        run: bun run test:browser
+
+      - name: Build extensions
+        run: bun run build
+
+      - name: Build component catalog
+        run: bun run storybook:build
+
+      - name: Check component catalog in Chromium
+        run: bun run test:design
+
+  browser-parity:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out pull request
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: head
+
+      - name: Check out base revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          path: base
+
+      - name: Set up Bun
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+
+      - name: Install head dependencies
+        working-directory: head
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Install base dependencies
+        working-directory: base
+        run: bun install --frozen-lockfile --ignore-scripts
+
+      - name: Install Chromium
+        working-directory: head
+        run: ./node_modules/.bin/playwright install --with-deps chromium
+
+      - name: Build packaged extensions
+        run: |
+          cd base && bun run build:crx
+          cd ../head && bun run build:crx
+
+      - name: Compare packaged browser output
+        id: browser-parity
+        env:
+          ALLOW_VISUAL_CHANGE: ${{ contains(github.event.pull_request.labels.*.name, 'accept-visual-change') }}
+        working-directory: head
+        run: |
+          expected_changes=()
+          # Use behavioral assertions only while introducing the results section.
+          # Once it exists in the base, subsequent PRs use strict pixel parity again.
+          if ! grep -q 'function renderResults()' ../base/src/work-log/locale.ts &&
+             grep -q 'function renderResults()' src/work-log/locale.ts; then
+            expected_changes+=(--expect-search-results-change)
+          fi
+          if ! grep -q 'function mountHomeSearch' ../base/src/main/bootstrap.ts &&
+             grep -q 'function mountHomeSearch' src/main/bootstrap.ts; then
+            expected_changes+=(--expect-home-change)
+          fi
+          if grep -q 'createSupportMenu' ../base/src/menu/ui/bootstrap.ts &&
+             grep -q 'createSupportLinks' src/menu/ui/overlays.ts; then
+            expected_changes+=(--expect-support-links-change)
+          fi
+          if ! grep -q 'bindCollapse' ../base/src/menu/ui/controller.ts &&
+             grep -q 'bindCollapse' src/menu/ui/controller.ts; then
+            expected_changes+=(--expect-sidebar-collapse-change)
+          fi
+          if ! grep -q 'bindResize' ../base/src/menu/ui/controller.ts &&
+             grep -q 'bindResize' src/menu/ui/controller.ts; then
+            expected_changes+=(--expect-sidebar-resize-change)
+          fi
+          bun run test:browser-parity -- \
+            --base-extension ../base/dist/crx/unpacked \
+            --head-extension dist/crx/unpacked \
+            --output ../browser-parity \
+            "${expected_changes[@]}"
+
+      - name: Upload browser parity differences
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: browser-parity
+          path: browser-parity
+          if-no-files-found: ignore

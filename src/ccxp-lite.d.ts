@@ -48,6 +48,25 @@ declare global {
     predictDigits: (imageSource: unknown) => Promise<string> | string;
   }
 
+  interface CcxpLiteDecaptchaShared {
+    createTensor: (
+      shape: readonly number[],
+      data: Float32Array | ArrayLike<number>,
+    ) => CcxpLitePreparedTensor;
+    tensorGet: (tensor: CcxpLitePreparedTensor, indices: readonly number[]) => number;
+    decodeImageElement: (image: HTMLImageElement) => {
+      width: number;
+      height: number;
+      data: Uint8ClampedArray;
+    };
+    conv2d: (
+      inputTensor: CcxpLitePreparedTensor,
+      weight: CcxpLitePreparedTensor,
+      bias?: CcxpLitePreparedTensor,
+      options?: { stride?: number; padding?: number; groups?: number },
+    ) => CcxpLitePreparedTensor;
+  }
+
   interface CcxpLiteClickLinkArgs {
     name: string;
     url: string;
@@ -189,6 +208,7 @@ declare global {
   }
 
   interface CcxpLiteSharedBrand {
+    createSupportLinks: (targetDocument: Document) => readonly HTMLAnchorElement[];
     createBrandImage: (
       targetDocument: Document,
       className: string,
@@ -299,6 +319,7 @@ declare global {
     rememberLocale: (locale: string | undefined, targetDocument: Document | undefined) => string;
     normalizeLocale: (locale: string) => string;
     resolveLocaleFromDocument: (targetDocument: Document) => string;
+    createSupportLinks: (targetDocument: Document) => readonly HTMLAnchorElement[];
     createBrandImage: (
       targetDocument: Document,
       className: string,
@@ -364,6 +385,10 @@ declare global {
 
   interface CcxpLiteLoginCaptcha {
     CAPTCHA_AUTOFILL_TIMEOUT_MS: number;
+    attachCaptchaAutofill: (
+      targetDocument: Document,
+      expectedKind: CcxpLiteCaptchaField["kind"],
+    ) => () => void;
     enableCaptchaAutofill: (
       targetDocument: Document,
       rootNode: ParentNode,
@@ -513,6 +538,8 @@ declare global {
 
   interface CcxpLiteSidebarStateModule {
     getSidebarUiState: (navDocument: Document) => CcxpLiteSidebarState;
+    setPersistedSidebarCollapsed: (collapsed: boolean) => void;
+    setPersistedSidebarWidth: (width: number) => void;
     persistSidebarScroll: (targetDocument: Document, viewKey: string) => void;
     restoreSidebarScroll: (contentNode: Element, scrollTop: number) => void;
     getPersistedSidebarVariant: () => "classic" | "layered";
@@ -525,6 +552,9 @@ declare global {
     searchQuery: string;
     activeLeaf: CcxpLiteSidebarLinkItem | undefined;
     sidebarVariant: "classic" | "layered";
+    sidebarCollapsed: boolean;
+    sidebarPreview: boolean;
+    sidebarWidth: number;
     classicExpandedItemIds: string[];
     scrollTopByView: Record<string, number>;
   }
@@ -532,23 +562,12 @@ declare global {
   interface CcxpLiteSidebarFavorites {
     FAVORITES_STORAGE_SCOPE_PATH: string;
     FAVORITES_STORAGE_KEY: string;
-    INITIAL_MAIN_URL_STORAGE_KEY: string;
-    getFavoriteIds: () => ReadonlySet<string>;
-    ensureFavoriteIdsLoaded: (onReady?: () => void) => void;
-    writeFavoriteIds: (favoriteIds: ReadonlySet<string>) => void;
-    ensureFavoriteStorageSync: () => void;
-    subscribeToFavoriteChanges: (callback: () => void) => () => void;
-    collectFavoriteLinks: (
-      item: CcxpLiteSidebarTreeNode | undefined,
-      favoriteIds: ReadonlySet<string>,
-    ) => readonly CcxpLiteSidebarLinkItem[];
-    collectFavoriteBlocks: (
-      item: CcxpLiteSidebarTreeNode | undefined,
-      favoriteIds: ReadonlySet<string>,
-    ) => readonly CcxpLiteSidebarBlock[];
-    dedupeLinkItems: (
-      linkItems: readonly CcxpLiteSidebarLinkItem[],
-    ) => readonly CcxpLiteSidebarLinkItem[];
+    areFavoritesLoaded: () => boolean;
+    initializeFavorites: (onChange: () => void) => () => void;
+    buildFavoriteCategory: (
+      categories: readonly CcxpLiteSidebarCategoryNode[],
+      strings: Readonly<Record<string, string>>,
+    ) => CcxpLiteSidebarCategoryNode;
     createLinkId: (linkItem: Partial<CcxpLiteSidebarLinkItem>) => string;
     createBlockId: (blockItem: Partial<CcxpLiteSidebarBlock>) => string;
     createLegacyLinkId: (linkItem: Partial<CcxpLiteSidebarLinkItem>) => string;
@@ -557,32 +576,17 @@ declare global {
       label: unknown,
       fallbackSegment?: string,
     ) => readonly string[];
-    isFavoriteLink: (
-      linkItem: CcxpLiteSidebarLinkItem | undefined,
-      favoriteIds: ReadonlySet<string>,
-    ) => boolean;
-    isFavoriteBlock: (
-      blockItem: CcxpLiteSidebarBlock | undefined,
-      favoriteIds: ReadonlySet<string>,
-    ) => boolean;
-    getMatchingFavoriteIds: (
-      linkItem: CcxpLiteSidebarLinkItem | undefined,
-      favoriteIds: ReadonlySet<string>,
-    ) => readonly string[];
-    getMatchingFavoriteBlockIds: (
-      blockItem: CcxpLiteSidebarBlock | undefined,
-      favoriteIds: ReadonlySet<string>,
-    ) => readonly string[];
-    getScopedSessionStorage: () => Storage | undefined;
+    isFavoriteLink: (linkItem: CcxpLiteSidebarLinkItem | undefined) => boolean;
+    isFavoriteBlock: (blockItem: CcxpLiteSidebarBlock | undefined) => boolean;
+    toggleFavoriteLink: (linkItem: CcxpLiteSidebarLinkItem) => void;
+    toggleFavoriteBlock: (blockItem: CcxpLiteSidebarBlock) => void;
   }
 
   interface CcxpLiteSidebarData {
     buildSidebarModel: (
-      root: CcxpLiteLegacySidebarFolderNode,
       navDocument: Document,
       strings: Readonly<Record<string, string>>,
-    ) => CcxpLiteSidebarModel;
-    parseSidebarTree: (navDocument: Document) => CcxpLiteLegacySidebarFolderNode | undefined;
+    ) => CcxpLiteSidebarModel | undefined;
     filterFavoriteLinks: (
       links: readonly CcxpLiteSidebarLinkItem[],
       query: string,
@@ -609,7 +613,11 @@ declare global {
       hostDocument: Document,
       strings: Readonly<Record<string, string>>,
     ) => HTMLElement;
-    syncTopLevelFramesetLayout: (variant: "classic" | "layered") => void;
+    syncTopLevelFramesetLayout: (
+      variant: "classic" | "layered",
+      collapsed?: boolean,
+      animate?: boolean,
+    ) => void;
     mountSidebarVariantSwitch: (
       targetDocument: Document,
       state: CcxpLiteSidebarState,
@@ -620,7 +628,9 @@ declare global {
   }
 
   interface CcxpLiteSidebarRuntime {
-    DESTINATION_LOAD_TIMEOUT_MS: number;
+    getRecentFunctionIds: () => readonly string[];
+    subscribeRecentFunctions: (listener: () => void) => () => void;
+    INITIAL_MAIN_URL_STORAGE_KEY: string;
     shouldOpenLeafInDestination: (
       linkItem: CcxpLiteSidebarLinkItem,
       navDocument: Document,
@@ -631,7 +641,13 @@ declare global {
       linkItem: CcxpLiteSidebarLinkItem,
       rerender: () => void,
     ) => void;
-    simplifyEmbeddedFrame: (frame: HTMLIFrameElement) => void;
+    createDestinationFrame: (
+      targetDocument: Document,
+      navDocument: Document,
+      linkItem: CcxpLiteSidebarLinkItem,
+      onStatus: (status: "loading" | "ready" | "error") => void,
+    ) => HTMLIFrameElement;
+    disposeDestination: (targetDocument: Document) => void;
     getLegacyMainFrame: () => HTMLIFrameElement | undefined;
     captureInitialMainFrameUrl: () => void;
     openLeafInNewTab: (activeLeaf: CcxpLiteSidebarLinkItem, navDocument: Document) => void;
@@ -646,16 +662,12 @@ declare global {
     ) => boolean;
   }
 
-  interface CcxpLiteSidebarFavorites {
-    favoriteState: {
-      ids: Set<string>;
-      hasLoaded: boolean;
-      pendingLoad: Promise<void> | undefined;
-    };
-  }
-
   interface CcxpLiteNamespace {
     shared?: CcxpLiteShared;
+    designTokens?: {
+      tokens: Readonly<Record<string, string>>;
+      cssVariables: Readonly<Record<string, string>>;
+    };
     sharedConstants?: CcxpLiteSharedConstants;
     sharedLocale?: CcxpLiteSharedLocale;
     sharedDom?: CcxpLiteSharedDom;
@@ -674,6 +686,16 @@ declare global {
     loginStyle?: CcxpLiteLoginStyle;
     sidebar?: CcxpLiteSidebar;
     sidebarState?: CcxpLiteSidebarStateModule;
+    sidebarOrdering?: {
+      restoreOriginalOrder: () => void;
+      mountSidebarOrdering: (
+        content: HTMLElement,
+        model: CcxpLiteSidebarModel,
+        strings: Readonly<Record<string, string>>,
+        rerender: () => void,
+        controller: CcxpLiteUiController,
+      ) => void;
+    };
     sidebarFavorites?: CcxpLiteSidebarFavorites;
     sidebarData?: CcxpLiteSidebarData;
     sidebarUi?: CcxpLiteSidebarUi;
@@ -683,6 +705,7 @@ declare global {
     menuRuntime?: Record<string, unknown>;
     menuState?: Record<string, unknown>;
     menuUi?: Record<string, unknown>;
+    decaptchaShared?: CcxpLiteDecaptchaShared;
     decaptcha?: CcxpLiteCaptchaPredictor;
     decaptchaModel?: CcxpLiteDecaptchaModel;
     inquireDecaptcha?: CcxpLiteCaptchaPredictor;

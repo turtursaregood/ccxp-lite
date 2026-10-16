@@ -2,6 +2,7 @@
   const runtimeScope = globalScope;
   const namespace = runtimeScope.CCXP_LITE ?? {};
   const SIDEBAR_VARIANT_STORAGE_KEY = "ccxp-lite-sidebar-variant";
+  const SIDEBAR_COLLAPSED_STORAGE_KEY = "ccxp-lite-sidebar-collapsed";
   const sidebarUiStateByDocument = new WeakMap<Document, CcxpLiteSidebarState>();
   let persistedSidebarVariant: "classic" | "layered" | undefined;
 
@@ -32,6 +33,9 @@
       searchQuery: "",
       activeLeaf: undefined,
       sidebarVariant: getPersistedSidebarVariant(),
+      sidebarCollapsed: getPersistedSidebarCollapsed(),
+      sidebarPreview: false,
+      sidebarWidth: getPersistedSidebarWidth(),
       classicExpandedItemIds: ["category-favorites"],
       scrollTopByView: {
         root: 0,
@@ -83,8 +87,50 @@
     }
     return persistedSidebarVariant;
   }
+
+  function getPersistedSidebarCollapsed(): boolean {
+    try {
+      return globalThis.localStorage.getItem(SIDEBAR_COLLAPSED_STORAGE_KEY) === "true";
+    } catch {
+      return false;
+    }
+  }
+
+  function setPersistedSidebarCollapsed(collapsed: boolean) {
+    try {
+      globalThis.localStorage.setItem(SIDEBAR_COLLAPSED_STORAGE_KEY, String(collapsed));
+    } catch {
+      // The current page keeps the preference when storage is unavailable.
+    }
+  }
+
+  function getPersistedSidebarWidth() {
+    const tokens = namespace.shared?.TOKENS;
+    const minimum = Number.parseFloat(tokens?.sizeSidebarMin ?? "280");
+    const maximum = Number.parseFloat(tokens?.sizeSidebarMax ?? "480");
+    const fallback = Number.parseFloat(tokens?.sizeSidebarExpanded ?? "324");
+    try {
+      const stored = Number(globalThis.localStorage.getItem("ccxp-lite-sidebar-width"));
+      return stored > 0 && Number.isFinite(stored)
+        ? Math.min(maximum, Math.max(minimum, stored))
+        : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+
+  function setPersistedSidebarWidth(width: number) {
+    try {
+      globalThis.localStorage.setItem("ccxp-lite-sidebar-width", String(width));
+    } catch {
+      // Keep the current width in memory when storage is unavailable.
+    }
+  }
+
   namespace.sidebarState = {
     getSidebarUiState,
+    setPersistedSidebarCollapsed,
+    setPersistedSidebarWidth,
     persistSidebarScroll,
     restoreSidebarScroll,
     getPersistedSidebarVariant,

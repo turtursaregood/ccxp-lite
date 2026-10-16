@@ -1,0 +1,840 @@
+/* eslint-disable no-await-in-loop -- Each native navigation must finish before the next date is submitted. */
+(function installBatchWorkLog() {
+  if (
+    window.name.startsWith("ccxp-lite-pe14d-") ||
+    !/\/PE14D1\.php$/iu.test(globalThis.location.pathname)
+  ) {
+    return;
+  }
+  const id = "ccxp-lite-batch";
+  const journalKey = "ccxp-lite-work-log-batch-journal";
+  interface Entry {
+    date: string;
+    start: string;
+    end: string;
+  }
+  interface Plan {
+    entries: Entry[];
+    task: string;
+    department: string;
+    note: string;
+  }
+  type HostWindow = Window & {
+    toSubmit?: CcxpLiteWrappedSubmit;
+    setDay?: (form: string, prefix: string, condition: string) => void;
+  };
+  class HostValidationError extends Error {
+    name = "HostValidationError";
+  }
+  let running = false;
+  let confirming = false;
+  let stopped = false;
+  let plan: Plan | undefined;
+  let panel: HTMLDivElement;
+  let multiple = false;
+  let singleDates: HTMLDivElement;
+  let feedback: HTMLDivElement;
+  let settings: HTMLFieldSetElement;
+  let status: HTMLParagraphElement;
+  let stopButton: HTMLButtonElement;
+  let from: HTMLInputElement;
+  let until: HTMLInputElement;
+  let weekdays: HTMLDivElement;
+  let weekdayRow: HTMLTableRowElement;
+  let stale = true;
+
+  let big5Characters: Set<string> | undefined;
+  function supportsBig5(text: string) {
+    if (!big5Characters) {
+      big5Characters = new Set(
+        Array.from({ length: 128 }, (_item, index) => String.fromCodePoint(index)),
+      );
+      const decoder = new TextDecoder("big5");
+      for (let lead = 0x81; lead <= 0xfe; lead++) {
+        for (let trail = 0x40; trail <= 0xfe; trail++) {
+          const decoded = decoder.decode(new Uint8Array([lead, trail]));
+          if (!decoded.includes("\uFFFD")) {
+            big5Characters.add(decoded);
+          }
+        }
+      }
+    }
+    // eslint-disable-next-line @typescript-eslint/no-misused-spread -- Big5 support is checked per Unicode code point; emoji sequences are rejected.
+    return [...text].every((character) => big5Characters?.has(character) === true);
+  }
+
+  function entryKey(task: string, entry: Entry) {
+    return JSON.stringify([task, entry.date, entry.start, entry.end]);
+  }
+
+  function readJournal() {
+    const stored: unknown = JSON.parse(sessionStorage.getItem(journalKey) ?? "{}");
+    if (
+      stored === null ||
+      typeof stored !== "object" ||
+      Object.getPrototypeOf(stored) !== Object.prototype
+    ) {
+      throw new Error("Invalid journal");
+    }
+    return stored as Record<string, string | undefined>;
+  }
+
+  function isStopped() {
+    return stopped;
+  }
+
+  function element<K extends keyof HTMLElementTagNameMap>(tag: K, text = "") {
+    const node = document.createElement(tag);
+    node.textContent = text;
+    return node;
+  }
+
+  function button(text: string, action: () => void) {
+    const node = element("button", text);
+    node.type = "button";
+    node.addEventListener("click", action);
+    return node;
+  }
+
+  function field(parent: HTMLElement, title: string, type: string, initialValue = "") {
+    const label = element("label", title);
+    const input = element("input");
+    input.type = type;
+    input.value = initialValue;
+    label.append(input);
+    parent.append(label);
+    return input;
+  }
+
+  function value(form: HTMLFormElement, name: string) {
+    const data = new FormData(form).get(name);
+    return typeof data === "string" ? data : "";
+  }
+
+  function hostForm(doc = document) {
+    const form = doc.querySelector<HTMLFormElement>("#insForm");
+    if (!form) {
+      throw new Error(
+        "\u627E\u4E0D\u5230\u65B0\u589E\u8868\u55AE\uFF0C\u8ACB\u78BA\u8A8D\u767B\u5165\u72C0\u614B\u5F8C\u91CD\u65B0\u958B\u555F\u5DE5\u6642\u9801\u9762\u3002",
+      );
+    }
+    return form;
+  }
+
+  function invalidate() {
+    stale = true;
+    if (!running) {
+      status.textContent = "";
+    }
+  }
+
+  function dateParts(form: HTMLFormElement, prefix: string) {
+    const parts = ["Year", "Month", "Day"].map((part) =>
+      form.querySelector<HTMLSelectElement>(`[name="${prefix}${part}"]`),
+    );
+    return parts.every((part) => part instanceof HTMLSelectElement)
+      ? (parts as [HTMLSelectElement, HTMLSelectElement, HTMLSelectElement])
+      : undefined;
+  }
+
+  function nativeDate(form: HTMLFormElement, prefix: string, zh: string, en: string) {
+    const existing = form.querySelector<HTMLInputElement>(
+      `input[data-ccxp-lite-date-prefix="${prefix}"]`,
+    );
+    if (existing) {
+      return existing;
+    }
+    const parts = dateParts(form, prefix);
+    if (!parts) {
+      return undefined;
+    }
+    const [year, month, day] = parts;
+    const years = [...year.options]
+      .map((option) => option.value)
+      .filter((yearValue) => /^\d{4}$/u.test(yearValue));
+    const input = element("input");
+    input.type = "date";
+    input.required = true;
+    input.className = "ccxp-lite-native-date";
+    input.dataset.ccxpLiteDatePrefix = prefix;
+    input.dataset.ccxpLiteDateLabelZh = zh;
+    input.dataset.ccxpLiteDateLabelEn = en;
+    input.setAttribute("aria-label", zh);
+    input.value = [year.value, month.value, day.value].join("-");
+    input.defaultValue = input.value;
+    input.min = `${years.at(0) ?? year.value}-01-01`;
+    input.max = `${years.at(-1) ?? year.value}-12-31`;
+    for (const select of parts) {
+      select.classList.add("ccxp-lite-native-date-source");
+      select.hidden = true;
+    }
+    input.addEventListener("change", () => {
+      if (!input.validity.valid) {
+        return;
+      }
+      const values = input.value.split("-");
+      const previousYear = year.value;
+      const previousMonth = month.value;
+      const [nextYear, nextMonth, nextDay] = values;
+      const monthChanged = previousYear !== nextYear || previousMonth !== nextMonth;
+      year.value = nextYear;
+      month.value = nextMonth;
+      const host = form.ownerDocument.defaultView as HostWindow | null;
+      host?.setDay?.(form.id, prefix, "onblur");
+      day.value = nextDay;
+      year.dispatchEvent(new Event("change", { bubbles: true }));
+      month.dispatchEvent(new Event("change", { bubbles: true }));
+      day.dispatchEvent(new Event("change", { bubbles: true }));
+      day.dispatchEvent(new Event("blur", { bubbles: true }));
+      if (prefix === "I_TASK_DT_" && monthChanged && !running) {
+        host?.toSubmit?.(form, "getLabInsList");
+      }
+    });
+    year.before(input);
+    return input;
+  }
+
+  function constrainRange(start: HTMLInputElement, end: HTMLInputElement) {
+    const rangeStart = start;
+    const rangeEnd = end;
+    const sync = () => {
+      if (rangeStart.value !== "" && (rangeEnd.value === "" || rangeEnd.value < rangeStart.value)) {
+        rangeEnd.value = rangeStart.value;
+      }
+      const initialMinimum = rangeEnd.dataset.ccxpLiteDateLimitMin;
+      rangeEnd.min = rangeStart.value === "" ? (initialMinimum ?? rangeEnd.min) : rangeStart.value;
+    };
+    rangeEnd.dataset.ccxpLiteDateLimitMin = rangeEnd.min;
+    rangeStart.addEventListener("change", sync);
+    rangeStart.form?.addEventListener("reset", () => {
+      globalThis.setTimeout(sync, 0, undefined);
+    });
+    sync();
+  }
+
+  function enhanceSearchDates() {
+    const form = document.querySelector<HTMLFormElement>("#queForm");
+    if (!form || form.dataset.ccxpLiteNativeDates === "true") {
+      return;
+    }
+    const start = nativeDate(form, "Q_TASK_A_DT_", "\u958B\u59CB\u65E5\u671F", "Start date");
+    const end = nativeDate(form, "Q_TASK_Z_DT_", "\u7D50\u675F\u65E5\u671F", "End date");
+    if (!start || !end) {
+      return;
+    }
+    form.dataset.ccxpLiteNativeDates = "true";
+    constrainRange(start, end);
+  }
+
+  function build() {
+    // Wait for all host date selects and their inline initialization to finish parsing.
+    if (document.readyState === "loading") {
+      return;
+    }
+    enhanceSearchDates();
+    if (document.querySelector(`#${id}`)) {
+      return;
+    }
+    const form = document.querySelector<HTMLFormElement>("#insForm");
+    const dateControl = form?.querySelector('[name="I_TASK_DT_Year"]');
+    const dateCell = dateControl?.closest("td");
+    if (!form || !dateCell) {
+      return;
+    }
+    if (form.dataset.ccxpLiteBatchInstalled === "true") {
+      return;
+    }
+    const start = nativeDate(form, "I_TASK_DT_", "\u5DE5\u4F5C\u65E5\u671F", "Working date");
+    if (!start) {
+      return;
+    }
+    form.dataset.ccxpLiteBatchInstalled = "true";
+    singleDates = element("div");
+    singleDates.className = "ccxp-lite-single-date";
+    singleDates.append(...dateCell.childNodes);
+    dateCell.append(singleDates);
+    panel = element("div");
+    panel.id = id;
+    const modes = element("div");
+    modes.className = "ccxp-lite-date-modes";
+    modes.setAttribute("role", "group");
+    modes.setAttribute("aria-label", "\u5DE5\u4F5C\u65E5\u671F\u6A21\u5F0F");
+    for (const [index, title] of ["\u55AE\u65E5", "\u591A\u65E5"].entries()) {
+      const mode = button(title, selectMode(index === 1));
+      mode.setAttribute("aria-pressed", String(index === 0));
+      modes.append(mode);
+    }
+    settings = element("fieldset");
+    settings.hidden = true;
+    const dates = element("div");
+    dates.className = "ccxp-lite-batch-fields";
+    until = dateField(form, "\u7D50\u675F\u65E5\u671F", "End date");
+    constrainRange(start, until);
+    dates.append(element("span", "\uFF5E"), until);
+    weekdays = element("div");
+    weekdays.className = "ccxp-lite-batch-weekdays";
+    weekdays.setAttribute("role", "group");
+    weekdays.setAttribute("aria-label", "\u6BCF\u9031\u65E5\u671F");
+    for (const [index, day] of [
+      "\u65E5",
+      "\u4E00",
+      "\u4E8C",
+      "\u4E09",
+      "\u56DB",
+      "\u4E94",
+      "\u516D",
+    ].entries()) {
+      const input = field(weekdays, `\u9031${day}`, "checkbox");
+      input.value = String(index);
+      input.checked = index > 0 && index < 6;
+    }
+    weekdayRow = element("tr");
+    weekdayRow.id = "ccxp-lite-weekday-row";
+
+    const weekdayCell = element("td");
+    const weekdayLabel = element("div", "\u50C5\u767B\u9304\u4EE5\u4E0B\u661F\u671F");
+    weekdayLabel.id = "ccxp-lite-weekday-label";
+    weekdays.setAttribute("aria-labelledby", weekdayLabel.id);
+    weekdayCell.append(weekdayLabel, weekdays);
+    weekdayCell.colSpan = 2;
+    weekdayRow.append(weekdayCell);
+    settings.append(dates);
+    panel.append(modes, settings);
+    feedback = element("div");
+    feedback.id = "ccxp-lite-batch-feedback";
+    status = element("p");
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+    stopButton = button("\u5B8C\u6210\u76EE\u524D\u4E00\u7B46\u5F8C\u505C\u6B62", () => {
+      stopped = true;
+      stopButton.disabled = true;
+    });
+    stopButton.hidden = true;
+    feedback.append(status, stopButton);
+    from = start;
+    singleDates.before(panel);
+    settings.before(singleDates);
+    dateCell.closest("tr")?.after(weekdayRow);
+    form.after(feedback);
+    syncMode();
+    invalidate();
+    form.addEventListener("input", invalidate);
+    form.addEventListener("reset", () => {
+      multiple = false;
+      syncMode();
+      invalidate();
+    });
+  }
+
+  function selectMode(next: boolean) {
+    return () => {
+      multiple = next;
+      syncMode();
+      invalidate();
+    };
+  }
+
+  function syncMode() {
+    singleDates.hidden = false;
+    settings.hidden = !multiple;
+    weekdayRow.hidden = !multiple;
+    for (const [index, mode] of panel.querySelectorAll(".ccxp-lite-date-modes button").entries()) {
+      mode.setAttribute("aria-pressed", String(multiple === (index === 1)));
+    }
+  }
+
+  function intercept(event: Event) {
+    if (!multiple || !(event.target instanceof Element)) {
+      return;
+    }
+    const form = event.target.closest("#insForm");
+    if (!form || (event.type === "click" && !event.target.closest('[name="S_SUBMIT"]'))) {
+      return;
+    }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (running || confirming) {
+      return;
+    }
+    preparePlan();
+    confirmAndRun().catch((error: unknown) => {
+      status.textContent = String(error);
+    });
+  }
+  // Capture before the host's inline click handler or native submit transport.
+  document.addEventListener("click", intercept, true);
+  document.addEventListener("submit", intercept, true);
+
+  async function confirmAndRun() {
+    if (stale || !plan) {
+      return;
+    }
+    if (plan.entries.length === 0) {
+      await run();
+      return;
+    }
+    const createDialog = globalThis.CCXP_LITE?.sidebarDialogView?.createRemovePinnedDialog;
+    if (!createDialog) {
+      status.textContent =
+        "\u78BA\u8A8D\u8996\u7A97\u5C1A\u672A\u5C31\u7DD2\uFF0C\u8ACB\u91CD\u65B0\u6574\u7406\u5F8C\u518D\u8A66\u3002";
+      return;
+    }
+    confirming = true;
+    const view = createDialog(
+      document,
+      "",
+      {
+        sidebarRemovePinnedDialogTitlePrefix: "\u78BA\u8A8D\u767B\u9304\u65E5\u671F",
+        sidebarRemovePinnedDialogTitleSuffix: "",
+        sidebarRemovePinnedDialogDescription: `\u5171 ${plan.entries.length} \u5929`,
+        sidebarRemovePinnedDialogCancel: "\u53D6\u6D88",
+        sidebarRemovePinnedDialogConfirm: "\u78BA\u8A8D\u9001\u51FA",
+      },
+      "primary",
+    );
+    const dates = element("ul");
+    Object.assign(dates.style, {
+      margin: "0",
+      padding: "0",
+      marginTop: "-12px",
+      listStyle: "none",
+      overflowY: "auto",
+      minHeight: "0",
+      font: "var(--ccxp-lite-type-body)",
+      fontVariantNumeric: "tabular-nums",
+      color: "var(--ccxp-lite-text)",
+    });
+    for (const entry of plan.entries) {
+      const row = element("li");
+      Object.assign(row.style, {
+        display: "grid",
+        gridTemplateColumns: "10ch auto",
+        columnGap: "1em",
+        fontVariantNumeric: "tabular-nums",
+      });
+      // The host skin forces a CJK font on list items; use a numeric font with equal-width digits
+      // instead of relying on its optional tnum feature.
+      row.style.setProperty("font-family", "Arial, sans-serif", "important");
+      const date = element("time", entry.date);
+      const period = element("time", `${entry.start}\u2013${entry.end}`);
+      row.append(date, period);
+      dates.append(row);
+    }
+    view.dialog.insertBefore(dates, view.dialog.lastElementChild);
+    view.dialog.style.maxHeight = "calc(100dvh - 48px)";
+    view.dialog.style.boxSizing = "border-box";
+    const previousFocus = document.activeElement;
+    const confirmed = await new Promise<boolean>((resolve) => {
+      const finish = (result: boolean) => {
+        view.overlay.remove();
+        if (previousFocus instanceof HTMLElement && previousFocus.isConnected) {
+          previousFocus.focus();
+        }
+        resolve(result);
+      };
+      view.keepButton.addEventListener("click", () => {
+        finish(false);
+      });
+      view.confirmButton.addEventListener("click", () => {
+        finish(true);
+      });
+      view.overlay.addEventListener("click", (event) => {
+        if (event.target === view.overlay) {
+          finish(false);
+        }
+      });
+      view.overlay.addEventListener("keydown", (event) => {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          finish(false);
+        } else if (event.key === "Tab") {
+          event.preventDefault();
+          (document.activeElement === view.keepButton
+            ? view.confirmButton
+            : view.keepButton
+          ).focus();
+        }
+      });
+      document.body.append(view.overlay);
+      view.keepButton.focus();
+    });
+    confirming = false;
+    if (confirmed) {
+      await run();
+    }
+  }
+
+  function selectedDate(input: HTMLInputElement) {
+    return input.value;
+  }
+
+  function dateField(form: HTMLFormElement, zh: string, en: string) {
+    const source = nativeDate(form, "I_TASK_DT_", "\u5DE5\u4F5C\u65E5\u671F", "Working date");
+    const input = element("input");
+    input.type = "date";
+    input.required = true;
+    input.className = "ccxp-lite-native-date";
+    input.dataset.ccxpLiteDateLabelZh = zh;
+    input.dataset.ccxpLiteDateLabelEn = en;
+    input.setAttribute("aria-label", zh);
+    input.value = source?.value ?? "";
+    input.defaultValue = input.value;
+    input.min = source?.min ?? "";
+    input.max = source?.max ?? "";
+    return input;
+  }
+
+  function dateValue(raw: string) {
+    const date = new Date(`${raw}T00:00:00Z`);
+    if (
+      !/^\d{4}-\d{2}-\d{2}$/u.test(raw) ||
+      !Number.isFinite(date.getTime()) ||
+      date.toISOString().slice(0, 10) !== raw
+    ) {
+      throw new Error("\u8ACB\u8F38\u5165\u6709\u6548\u65E5\u671F\uFF08YYYY-MM-DD\uFF09\u3002");
+    }
+    return date;
+  }
+
+  function preparePlan() {
+    try {
+      const first = dateValue(selectedDate(from));
+      const last = dateValue(selectedDate(until));
+      const days = (last.getTime() - first.getTime()) / 86_400_000;
+      if (days < 0 || days > 366) {
+        throw new Error(
+          "\u7D50\u675F\u65E5\u671F\u4E0D\u53EF\u65E9\u65BC\u958B\u59CB\u65E5\u671F\uFF0C\u65E5\u671F\u5340\u9593\u6700\u591A\u4E00\u5E74\u3002",
+        );
+      }
+      const selected = new Set(
+        [...weekdays.querySelectorAll<HTMLInputElement>("input:checked")].map((input) =>
+          Number(input.value),
+        ),
+      );
+      const dates = new Set<string>();
+      for (let day = first.getTime(); day <= last.getTime(); day += 86_400_000) {
+        const date = new Date(day);
+        if (selected.has(date.getUTCDay())) {
+          dates.add(date.toISOString().slice(0, 10));
+        }
+      }
+      const form = hostForm();
+      const start = `${value(form, "I_TASK_A_TM_Hour")}:${value(form, "I_TASK_A_TM_Minute")}`;
+      const end = `${value(form, "I_TASK_Z_TM_Hour")}:${value(form, "I_TASK_Z_TM_Minute")}`;
+      if (
+        !/^(?:[01]\d|2[0-3]):[0-5]\d$/u.test(start) ||
+        !/^(?:(?:[01]\d|2[0-3]):[0-5]\d|24:00)$/u.test(end) ||
+        start >= end
+      ) {
+        throw new Error(
+          "\u7D50\u675F\u6642\u9593\u5FC5\u9808\u665A\u65BC\u958B\u59CB\u6642\u9593\uFF1B\u8DE8\u5348\u591C\u8ACB\u5206\u65E5\u767B\u9304\u3002",
+        );
+      }
+      const entries = [...dates].toSorted().map((date) => ({ date, start, end }));
+      if (entries.length === 0 || entries.length > 100) {
+        throw new Error(
+          "\u8ACB\u9078\u53D6\u65E5\u671F\u8207\u6642\u6BB5\uFF0C\u6BCF\u6279\u6700\u591A 100 \u7B46\u3002",
+        );
+      }
+      const task = value(form, "I_LAB_SERIAL");
+      const department = value(form, "I_SRV_ID");
+      const note = value(form, "I_TASK_NOTE").trim();
+      if (task === "" || department === "" || note === "" || note.length > 15) {
+        throw new Error(
+          "\u8ACB\u5148\u5728\u65B0\u589E\u8868\u55AE\u9078\u53D6\u4EFB\u52D9\u3001\u5DE5\u4F5C\u55AE\u4F4D\uFF0C\u4E26\u586B\u5BEB\u6700\u591A 15 \u5B57\u7684\u5DE5\u4F5C\u5167\u5BB9\u3002",
+        );
+      }
+      if (!supportsBig5(note)) {
+        throw new Error(
+          "\u5DE5\u4F5C\u5167\u5BB9\u542B Big5 \u7121\u6CD5\u8868\u793A\u7684\u5B57\u5143\uFF0C\u8ACB\u79FB\u9664\u8868\u60C5\u7B26\u865F\u6216\u6539\u7528\u5E38\u7528\u4E2D\u6587\u5B57\u3002",
+        );
+      }
+      const journal = readJournal();
+      plan = {
+        entries: entries.filter((entry) => journal[entryKey(task, entry)] === undefined),
+        task,
+        department,
+        note,
+      };
+      stale = false;
+    } catch (error) {
+      invalidate();
+      status.textContent = error instanceof Error ? error.message : String(error);
+    }
+  }
+
+  function set(form: HTMLFormElement, name: string, next: string) {
+    const controls = [
+      ...form.querySelectorAll<HTMLInputElement | HTMLSelectElement>("input, select"),
+    ].filter((control) => control.name === name);
+    if (controls.length === 0) {
+      throw new Error(`\u6821\u65B9\u8868\u55AE\u7F3A\u5C11\u6B04\u4F4D\uFF1A${name}`);
+    }
+    for (const control of controls) {
+      if (control.type === "radio") {
+        control.checked = control.value === next;
+      } else {
+        control.value = next;
+      }
+    }
+    if (value(form, name) !== next) {
+      throw new Error(
+        `\u6B64\u65E5\u671F\u7684\u4EFB\u52D9\u6216\u6B04\u4F4D\u9078\u9805\u4E0D\u53EF\u7528\uFF1A${name}`,
+      );
+    }
+  }
+
+  function setDate(form: HTMLFormElement, entry: Entry) {
+    for (const [index, part] of ["Year", "Month", "Day"].entries()) {
+      if (part === "Day") {
+        (form.ownerDocument.defaultView as HostWindow | null)?.setDay?.(
+          "insForm",
+          "I_TASK_DT_",
+          "onblur",
+        );
+      }
+      set(form, `I_TASK_DT_${part}`, entry.date.split("-")[index]);
+    }
+  }
+
+  async function navigate(frame: HTMLIFrameElement, action: () => void): Promise<Document> {
+    return await new Promise((resolve, reject) => {
+      const timer = globalThis.setTimeout(
+        () => {
+          cleanup();
+          reject(
+            new Error(
+              "\u7B49\u5F85\u6821\u65B9\u56DE\u61C9\u903E\u6642\uFF0C\u8ACB\u5148\u67E5\u8A62\u5DE5\u6642\u7D00\u9304\uFF0C\u52FF\u76F4\u63A5\u91CD\u9001\u3002",
+            ),
+          );
+        },
+        30_000,
+        undefined,
+      );
+      function cleanup() {
+        clearTimeout(timer);
+        frame.removeEventListener("load", loaded);
+      }
+
+      function loaded() {
+        try {
+          const doc = frame.contentDocument;
+          if (!doc || doc.URL === "about:blank") {
+            return;
+          }
+          cleanup();
+          hostForm(doc);
+          resolve(doc);
+        } catch (error) {
+          cleanup();
+          reject(error instanceof Error ? error : new Error(String(error)));
+        }
+      }
+      frame.addEventListener("load", loaded);
+      try {
+        action();
+      } catch (error) {
+        cleanup();
+        reject(error instanceof Error ? error : new Error(String(error)));
+      }
+    });
+  }
+
+  function submit(frame: HTMLIFrameElement, action: string) {
+    const host = frame.contentWindow as HostWindow | null;
+    if (!host?.toSubmit) {
+      throw new Error(
+        "\u6821\u65B9\u8868\u55AE\u5C1A\u672A\u5C31\u7DD2\uFF0C\u5DF2\u505C\u6B62\u3002",
+      );
+    }
+    const form = hostForm(host.document);
+    let message = "";
+    host.alert = (text?: unknown) => {
+      message = String(text);
+    };
+    host.confirm = (text?: string) => {
+      message =
+        text ??
+        "\u6821\u65B9\u8981\u6C42\u78BA\u8A8D\uFF0C\u8ACB\u6539\u7528\u55AE\u7B46\u767B\u9304\u3002";
+      return false;
+    };
+    // Native form.submit() omits submit buttons. Supply the server's canonical action explicitly.
+    const submitControl = form.querySelector<HTMLInputElement>('input[name="S_SUBMIT"]');
+    if (!submitControl) {
+      throw new Error("\u627E\u4E0D\u5230\u6821\u65B9\u9001\u51FA\u6309\u9215\u3002");
+    }
+    const previousType = submitControl.type;
+    submitControl.type = "hidden";
+    if (action === "ins") {
+      submitControl.value = "\u65B0\u589E(Add)";
+    }
+    try {
+      if (host.toSubmit(form, action) !== true) {
+        throw new HostValidationError(
+          message === ""
+            ? "\u6821\u65B9\u9A57\u8B49\u672A\u901A\u904E\uFF0C\u8ACB\u78BA\u8A8D\u65E5\u671F\u3001\u6642\u6BB5\u8207\u4EFB\u52D9\u8CC7\u6599\u3002"
+            : message,
+        );
+      }
+    } finally {
+      submitControl.type = previousType;
+    }
+  }
+
+  function succeeded(doc: Document, entry: Entry, current: Plan) {
+    const roc =
+      String(Number(entry.date.slice(0, 4)) - 1911) + entry.date.slice(5).replace("-", "");
+    return (
+      [...doc.querySelectorAll<HTMLTableRowElement>("#listForm tr")].some((row) => {
+        const { cells } = row;
+        if (cells.length !== 15) {
+          return false;
+        }
+        const times = cells[2].textContent.match(/\d{2}:\d{2}/gu);
+        return (
+          cells[1].textContent.trim() === roc &&
+          times?.[0] === entry.start &&
+          times[1] === entry.end &&
+          cells[4].textContent.trim() === current.task &&
+          cells[6].textContent.trim() === current.note
+        );
+      }) &&
+      [...doc.scripts].some((script) =>
+        /alert\(['"][^'"]*Add successfully!/iu.test(script.textContent),
+      )
+    );
+  }
+
+  async function run() {
+    if (running || stale || !plan) {
+      return;
+    }
+    const current = plan;
+    const { entries } = current;
+    if (entries.length === 0) {
+      status.textContent =
+        "\u6B64\u5340\u9593\u7684\u6642\u6BB5\u5DF2\u767B\u9304\u6216\u5F85\u78BA\u8A8D\uFF0C\u8ACB\u5148\u67E5\u8A62\u7D00\u9304\u3002";
+      return;
+    }
+    let journal: Record<string, string | undefined>;
+    try {
+      journal = readJournal();
+      sessionStorage.setItem(journalKey, JSON.stringify(journal));
+    } catch {
+      status.textContent =
+        "\u7121\u6CD5\u4FDD\u5B58\u672C\u6B21\u9032\u5EA6\uFF0C\u8ACB\u5141\u8A31\u6B64\u9801\u9762\u7684\u5DE5\u4F5C\u968E\u6BB5\u5132\u5B58\u5F8C\u518D\u8A66\u3002";
+      return;
+    }
+    running = true;
+    stopped = false;
+    settings.disabled = true;
+    stopButton.hidden = false;
+    stopButton.disabled = false;
+    // Prevent changing the shared form or navigating its transport during the batch.
+    const form = hostForm();
+    const locked = [
+      ...form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLButtonElement>(
+        "input, select, button",
+      ),
+    ].filter((control) => !control.disabled);
+    const token = value(form, "ACIXSTORE");
+    for (const control of locked) {
+      control.disabled = true;
+    }
+    const frame = element("iframe");
+    frame.name = "ccxp-lite-pe14d-batch";
+    frame.hidden = true;
+    frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms");
+    panel.append(frame);
+    let completed = 0;
+    try {
+      for (const entry of entries) {
+        if (isStopped()) {
+          break;
+        }
+        const key = entryKey(current.task, entry);
+        if (Object.hasOwn(journal, key)) {
+          throw new Error(
+            `${entry.date} ${entry.start} \u5DF2\u9001\u51FA\u904E\u6216\u7D50\u679C\u5C1A\u5F85\u78BA\u8A8D\uFF0C\u8ACB\u5148\u67E5\u8A62\u7D00\u9304\u3002`,
+          );
+        }
+        status.textContent = `\u5DF2\u5B8C\u6210 ${completed} / ${
+          entries.length
+        }\uFF1B\u6B63\u5728\u8655\u7406 ${entry.date} ${entry.start}\u2013${entry.end}`;
+        const url = new URL("PE14D1.php", globalThis.location.href);
+        url.searchParams.set("ACIXSTORE", token);
+        await navigate(frame, () => {
+          frame.src = url.href;
+        });
+        const initial = hostForm(frame.contentDocument ?? undefined);
+        setDate(initial, entry);
+        const doc = await navigate(frame, () => {
+          submit(frame, "getLabInsList");
+        });
+        const next = hostForm(doc);
+        setDate(next, entry);
+        set(next, "I_LAB_SERIAL", current.task);
+        set(next, "I_SRV_ID", current.department);
+        set(next, "I_TASK_NOTE", current.note);
+        for (const [prefix, time] of [
+          ["A", entry.start],
+          ["Z", entry.end],
+        ]) {
+          set(next, `I_TASK_${prefix}_TM_Hour`, time.split(":")[0]);
+          set(next, `I_TASK_${prefix}_TM_Minute`, time.split(":")[1]);
+        }
+        if (isStopped()) {
+          break;
+        }
+        journal[key] = "pending";
+        sessionStorage.setItem(journalKey, JSON.stringify(journal));
+        const response = await navigate(frame, () => {
+          try {
+            submit(frame, "ins");
+          } catch (error) {
+            // A synchronous validation rejection never called native form.submit().
+            if (error instanceof HostValidationError) {
+              Reflect.deleteProperty(journal, key);
+              sessionStorage.setItem(journalKey, JSON.stringify(journal));
+            }
+            throw error;
+          }
+        });
+        if (!succeeded(response, entry, current)) {
+          const notices = [...response.scripts]
+            .flatMap((script) =>
+              [...script.textContent.matchAll(/alert\(['"]([^'"]+)['"]\)/gu)].map(
+                (match) => match[1],
+              ),
+            )
+            .join(" ");
+          throw new Error(
+            `\u672A\u80FD\u78BA\u8A8D ${entry.date} ${
+              entry.start
+            } \u767B\u9304\u6210\u529F\uFF0C\u5DF2\u505C\u6B62\u3002\u8ACB\u5148\u67E5\u8A62\u7D00\u9304\u8207\u6821\u65B9\u63D0\u793A\u3002 ${notices}`,
+          );
+        }
+        journal[key] = "done";
+        sessionStorage.setItem(journalKey, JSON.stringify(journal));
+        completed++;
+      }
+      status.textContent = `${isStopped() ? "\u5DF2\u505C\u6B62\u3002" : "\u767B\u9304\u5B8C\u6210\u3002"}\u6210\u529F ${completed} \u7B46\uFF1B\u8ACB\u81F3\u67E5\u8A62\u9801\u78BA\u8A8D\u7D00\u9304\u3002`;
+    } catch (error) {
+      status.textContent = `\u5DF2\u5B8C\u6210 ${completed} \u7B46\u3002${error instanceof Error ? error.message : String(error)}`;
+    } finally {
+      frame.remove();
+      running = false;
+      settings.disabled = false;
+      stopButton.hidden = true;
+      for (const control of locked) {
+        control.disabled = false;
+      }
+      // Rebuild the plan each run; session journal guards confirmed or uncertain entries.
+      stale = true;
+    }
+  }
+  document.addEventListener("DOMContentLoaded", build, { once: true });
+  const observer = new MutationObserver(build);
+  observer.observe(document.documentElement, { childList: true, subtree: true });
+  build();
+})();

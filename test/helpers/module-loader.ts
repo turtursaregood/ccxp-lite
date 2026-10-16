@@ -24,13 +24,6 @@ export function createTestWindow(
   });
   window.document.write(html);
   const testWindow = window as unknown as TestWindow;
-  const storageChangeListeners = new Set<
-    (
-      changes: Readonly<Record<string, chrome.storage.StorageChange>>,
-      areaName: chrome.storage.AreaName,
-    ) => void
-  >();
-
   testWindow.CCXP_LITE = {} as CcxpLiteNamespace;
   testWindow.chrome = {
     runtime: {
@@ -54,22 +47,8 @@ export function createTestWindow(
         },
       },
       onChanged: {
-        addListener: (
-          callback: (
-            changes: Readonly<Record<string, chrome.storage.StorageChange>>,
-            areaName: chrome.storage.AreaName,
-          ) => void,
-        ) => {
-          storageChangeListeners.add(callback);
-        },
-        removeListener: (
-          callback: (
-            changes: Readonly<Record<string, chrome.storage.StorageChange>>,
-            areaName: chrome.storage.AreaName,
-          ) => void,
-        ) => {
-          storageChangeListeners.delete(callback);
-        },
+        addListener: () => undefined,
+        removeListener: () => undefined,
       },
     },
   } as unknown as typeof chrome;
@@ -126,12 +105,17 @@ export function requireElement<T extends Element>(
 }
 
 export const sharedModulePaths = [
+  ".build/design/tokens.js",
   "src/shared/constants.ts",
   "src/shared/locale.ts",
   "src/shared/theme.ts",
+  ".build/design/ui.js",
   "src/shared/brand.ts",
   "src/shared/dom.ts",
+  "src/shared/ui/legacy-style.ts",
   "src/shared/analytics.ts",
+  "src/shared/ui/loading.ts",
+  "src/shared/ui/language.ts",
 ];
 
 export const menuModulePaths = [
@@ -140,15 +124,31 @@ export const menuModulePaths = [
   "src/menu/model/favorites.ts",
   "src/menu/model/data.ts",
   "src/menu/runtime.ts",
-  "src/menu/ui/index.ts",
+  "src/menu/ui/dialog-controller.ts",
+  "src/menu/ui/session-timer.ts",
+  "src/menu/ui/overlays.ts",
+  "src/menu/ui/favorites.ts",
+  "src/menu/ui/navigation-adapter.ts",
+  "src/menu/ui/navigation.ts",
+  "src/menu/ui/destination.ts",
+  "src/menu/ui/views.ts",
+  "src/menu/ui/ordering.ts",
+  "src/menu/ui/controller.ts",
 ];
 
 export const loginModulePaths = [
   ...sharedModulePaths,
   "src/login/locale.ts",
+  "src/login/ui/links.ts",
+  "src/login/ui/notice-view.ts",
+  "src/login/ui/notices.ts",
   "src/login/ui/support.ts",
   "src/login/ui/tabs.ts",
   "src/login/auth/validation.ts",
+  "src/login/ui/form-adapter.ts",
+  "src/login/ui/fields.ts",
+  "src/login/ui/password.ts",
+  "src/login/ui/actions.ts",
   "src/login/ui/login.ts",
   "src/login/auth/captcha.ts",
   "src/login/pipeline/identify.ts",

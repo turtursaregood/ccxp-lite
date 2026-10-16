@@ -6,6 +6,11 @@
     return;
   }
   const { TOKENS, DARK_TOKENS, ASSETS } = sharedConstants;
+  const tokenVariables = namespace.designTokens?.cssVariables;
+  if (!tokenVariables) {
+    return;
+  }
+  const themeVariables = tokenVariables;
   function ensureThemeDocument(targetDocument: Document, scope: string) {
     const { documentElement } = targetDocument;
     documentElement.dataset.ccxpLiteScope = scope;
@@ -54,6 +59,7 @@
   function buildCssVariables(theme: "light" | "dark" = getPersistedTheme()) {
     const tokens = theme === "dark" && DARK_TOKENS ? { ...TOKENS, ...DARK_TOKENS } : TOKENS;
     return {
+      ...themeVariables,
       "--ccxp-lite-primary": tokens.colorPrimary,
       "--ccxp-lite-accent": tokens.colorAccent,
       "--ccxp-lite-brand": tokens.colorBrand,
@@ -93,125 +99,8 @@
       "--ccxp-lite-skeleton-highlight-start": tokens.colorSkeletonHighlightStart,
       "--ccxp-lite-skeleton-highlight-soft": tokens.colorSkeletonHighlightSoft,
       "--ccxp-lite-skeleton-highlight-strong": tokens.colorSkeletonHighlightStrong,
-      "--ccxp-lite-skeleton-surface-start":
-        "color-mix(in srgb, var(--ccxp-lite-surface) 60%, var(--ccxp-lite-accent))",
-      "--ccxp-lite-skeleton-surface-end":
-        "color-mix(in srgb, var(--ccxp-lite-surface) 86%, var(--ccxp-lite-skeleton-surface-end-tint))",
-      "--ccxp-lite-tabs-active-surface":
-        "color-mix(in srgb, var(--ccxp-lite-surface) 72%, var(--ccxp-lite-accent))",
-      "--ccxp-lite-tabs-focus-outline":
-        "color-mix(in srgb, var(--ccxp-lite-primary) 45%, var(--ccxp-lite-bg))",
-      "--ccxp-lite-danger-flash-transparent":
-        "color-mix(in srgb, var(--ccxp-lite-type-danger-color) 0%, var(--ccxp-lite-transparent))",
-      "--ccxp-lite-danger-flash-outline":
-        "color-mix(in srgb, var(--ccxp-lite-type-danger-color) 78%, var(--ccxp-lite-bg))",
-      "--ccxp-lite-danger-flash-shadow":
-        "color-mix(in srgb, var(--ccxp-lite-type-danger-color) 14%, var(--ccxp-lite-transparent))",
-      "--ccxp-lite-spacing-xs": tokens.spacingXs,
-      "--ccxp-lite-spacing-sm": tokens.spacingSm,
-      "--ccxp-lite-spacing-md": tokens.spacingMd,
-      "--ccxp-lite-spacing-lg": tokens.spacingLg,
-      "--ccxp-lite-spacing-xl": tokens.spacingXl,
-      "--ccxp-lite-spacing-2xs": tokens.spacing2xs,
-      "--ccxp-lite-spacing-3xs": tokens.spacing3xs,
-      "--ccxp-lite-spacing-inline-sm": tokens.spacingInlineSm,
-      "--ccxp-lite-spacing-inset-sm": tokens.spacingInsetSm,
-      "--ccxp-lite-spacing-inset-md": tokens.spacingInsetMd,
-      "--ccxp-lite-spacing-inset-lg": tokens.spacingInsetLg,
-      "--ccxp-lite-spacing-brand-inline": tokens.spacingBrandInline,
-      "--ccxp-lite-spacing-sidebar-search-inset": tokens.spacingSidebarSearchInset,
-      "--ccxp-lite-spacing-sidebar-experiment-inset-x": tokens.spacingSidebarExperimentInsetX,
-      "--ccxp-lite-spacing-sidebar-experiment-inset-y": tokens.spacingSidebarExperimentInsetY,
-      "--ccxp-lite-sidebar-row-padding-y": tokens.sidebarRowPaddingY,
-      "--ccxp-lite-sidebar-row-padding-x": tokens.sidebarRowPaddingX,
-      "--ccxp-lite-sidebar-row-gap": tokens.sidebarRowGap,
-      "--ccxp-lite-sidebar-tree-indent-step": tokens.sidebarTreeIndentStep,
-      "--ccxp-lite-radius-xs": tokens.radiusXs,
-      "--ccxp-lite-radius-sm": tokens.radiusSm,
-      "--ccxp-lite-radius-input": tokens.radiusInput,
-      "--ccxp-lite-radius-md": tokens.radiusMd,
-      "--ccxp-lite-radius-lg": tokens.radiusLg,
-      "--ccxp-lite-radius-brand": tokens.radiusBrand,
-      "--ccxp-lite-radius-full": tokens.radiusFull,
-      "--ccxp-lite-font-sans": tokens.fontSans,
-      "--ccxp-lite-font-brand": tokens.fontBrand,
-      "--ccxp-lite-font-weight-regular": tokens.fontWeightRegular,
-      "--ccxp-lite-font-weight-strong": tokens.fontWeightStrong,
-      "--ccxp-lite-font-weight-heavy": tokens.fontWeightHeavy,
-      "--ccxp-lite-font-variant-numeric-tabular": tokens.fontVariantNumericTabular,
-      "--ccxp-lite-font-size-caption": tokens.fontSizeCaption,
-      "--ccxp-lite-font-size-nav": tokens.fontSizeNav,
-      "--ccxp-lite-font-size-utility": tokens.fontSizeUtility,
-      "--ccxp-lite-font-size-body": tokens.fontSizeBody,
-      "--ccxp-lite-font-size-sidebar-brand": tokens.fontSizeSidebarBrand,
-      "--ccxp-lite-size-sidebar-brand-logo": tokens.sizeSidebarBrandLogo,
-      "--ccxp-lite-size-sidebar-category-leading": tokens.sizeSidebarCategoryLeading,
-      "--ccxp-lite-size-sidebar-control": tokens.sizeSidebarControl,
-      "--ccxp-lite-size-sidebar-guide-line": tokens.sizeSidebarGuideLine,
-      "--ccxp-lite-size-sidebar-search-spacer": tokens.sizeSidebarSearchSpacer,
-      "--ccxp-lite-size-sidebar-search-width": tokens.sizeSidebarSearchWidth,
-      "--ccxp-lite-spacing-sidebar-brand-word-gap": tokens.spacingSidebarBrandWordGap,
-      "--ccxp-lite-size-sidebar-header-divider-width": tokens.sizeSidebarHeaderDividerWidth,
-      "--ccxp-lite-size-sidebar-header-divider-height": tokens.sizeSidebarHeaderDividerHeight,
-      "--ccxp-lite-size-sidebar-search-icon": tokens.sizeSidebarSearchIcon,
-      "--ccxp-lite-size-sidebar-experiment-switch": tokens.sizeSidebarExperimentSwitch,
-      "--ccxp-lite-size-sidebar-experiment-switch-expanded":
-        tokens.sizeSidebarExperimentSwitchExpanded,
-      "--ccxp-lite-size-landing-brand-logo": tokens.sizeLandingBrandLogo,
-      "--ccxp-lite-size-landing-header-height": tokens.sizeLandingHeaderHeight,
-      "--ccxp-lite-size-form-control-width": tokens.sizeFormControlWidth,
-      "--ccxp-lite-size-login-control-height": tokens.sizeLoginControlHeight,
-      "--ccxp-lite-size-password-toggle-offset": tokens.sizePasswordToggleOffset,
-      "--ccxp-lite-size-icon-button-sm": tokens.sizeIconButtonSm,
-      "--ccxp-lite-size-icon-button-md": tokens.sizeIconButtonMd,
-      "--ccxp-lite-size-sidebar-section-icon": tokens.sizeSidebarSectionIcon,
-      "--ccxp-lite-size-sidebar-category-card-icon": tokens.sizeSidebarCategoryCardIcon,
-      "--ccxp-lite-size-control-min-width": tokens.sizeControlMinWidth,
-      "--ccxp-lite-size-control-height-sm": tokens.sizeControlHeightSm,
-      "--ccxp-lite-size-control-height-md": tokens.sizeControlHeightMd,
-      "--ccxp-lite-size-sidebar-section-card-min-height": tokens.sizeSidebarSectionCardMinHeight,
-      "--ccxp-lite-size-sidebar-category-card-min-height": tokens.sizeSidebarCategoryCardMinHeight,
-      "--ccxp-lite-size-sidebar-destination-frame-offset": tokens.sizeSidebarDestinationFrameOffset,
-      "--ccxp-lite-size-announcement-divider": tokens.sizeAnnouncementDivider,
-      "--ccxp-lite-font-size-page-title": tokens.fontSizePageTitle,
-      "--ccxp-lite-font-size-display": tokens.fontSizeDisplay,
-      "--ccxp-lite-font-size-section-title": tokens.fontSizeSectionTitle,
-      "--ccxp-lite-font-size-chip": tokens.fontSizeChip,
-      "--ccxp-lite-sidebar-width": tokens.sidebarWidth,
-      "--ccxp-lite-landing-max-width": tokens.landingMaxWidth,
-      "--ccxp-lite-type-display":
-        "var(--ccxp-lite-font-weight-heavy) var(--ccxp-lite-font-size-display)/1.1 var(--ccxp-lite-font-sans)",
-      "--ccxp-lite-type-display-color": "var(--ccxp-lite-text)",
-      "--ccxp-lite-type-page-title":
-        "var(--ccxp-lite-font-weight-strong) var(--ccxp-lite-font-size-page-title)/1.2 var(--ccxp-lite-font-sans)",
-      "--ccxp-lite-type-page-title-color": "var(--ccxp-lite-text)",
-      "--ccxp-lite-type-primary-link": "var(--ccxp-lite-type-body-strong)",
-      "--ccxp-lite-type-primary-link-color": "var(--ccxp-lite-primary)",
-      "--ccxp-lite-type-info": "var(--ccxp-lite-type-body-strong)",
-      "--ccxp-lite-type-info-color": "var(--ccxp-lite-legacy-blue-text)",
-      "--ccxp-lite-type-danger": "var(--ccxp-lite-type-body-strong)",
-      "--ccxp-lite-type-danger-color": "var(--ccxp-lite-legacy-red-text)",
-      "--ccxp-lite-type-body-strong":
-        "var(--ccxp-lite-font-weight-strong) var(--ccxp-lite-font-size-body)/1.55 var(--ccxp-lite-font-sans)",
-      "--ccxp-lite-type-body-strong-color": "var(--ccxp-lite-text)",
-      "--ccxp-lite-type-body":
-        "var(--ccxp-lite-font-weight-regular) var(--ccxp-lite-font-size-body)/1.55 var(--ccxp-lite-font-sans)",
-      "--ccxp-lite-type-body-color": "var(--ccxp-lite-text)",
-      "--ccxp-lite-type-body-muted":
-        "var(--ccxp-lite-font-weight-regular) var(--ccxp-lite-font-size-body)/1.55 var(--ccxp-lite-font-sans)",
-      "--ccxp-lite-type-body-muted-color": "var(--ccxp-lite-text-muted)",
-      "--ccxp-lite-type-utility":
-        "var(--ccxp-lite-font-weight-strong) var(--ccxp-lite-font-size-utility)/1.4 var(--ccxp-lite-font-sans)",
-      "--ccxp-lite-type-utility-color": "var(--ccxp-lite-primary)",
-      "--ccxp-lite-type-nav": "var(--ccxp-lite-type-utility)",
-      "--ccxp-lite-type-nav-color": "var(--ccxp-lite-primary)",
-      "--ccxp-lite-type-caption": "var(--ccxp-lite-type-utility)",
-      "--ccxp-lite-type-caption-color": "var(--ccxp-lite-text-muted)",
-      "--ccxp-lite-type-section-label": "var(--ccxp-lite-type-utility)",
-      "--ccxp-lite-type-section-label-color": "var(--ccxp-lite-primary)",
     };
   }
-
   function applyCssVariables(
     targetElement: HTMLElement,
     variables: Readonly<Record<string, string>>,

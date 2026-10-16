@@ -1,0 +1,30 @@
+{
+  "sourcePath": "/ccxp/INQUIRE/PE/1/14D/PE14D1.php",
+  "inspectedAt": "2026-09-12",
+  "sourceState": "Authenticated student, add form, no task for selected date, extension disabled",
+  "preserved": [
+    "center and insTask/queTask wrappers",
+    "datatable4 and initialized jQuery UI classes",
+    "bilingual labels and help",
+    "host inline CSS",
+    "PE2.css and jQuery UI CSS with referenced images",
+    "native date/time controls",
+    "main-frame embedding",
+    "Results p.H12 caption and inline font-size captured from the live search page on 2026-09-13; this untouched legacy fragment was extracted from Chrome Save Page while the base extension was enabled. Existing raw form/table fixture and PE2.css retained; no enhanced DOM copied."
+  ],
+  "sanitized": [
+    "session parameters and hidden values",
+    "saved work note and selected department",
+    "department options reduced to placeholder, EI07, and EU0A; EU0A code and Chinese label verified in live DOM on 2026-09-13, English label used as a bilingual search specimen",
+    "date/time frozen to 2026-09-10 08:00-10:00",
+    "empty task replaced by one explicitly synthetic task",
+    "original scripts and event handlers replaced with offline submit shim",
+    "Search caption dates frozen to 1150901–1150930; empty response uses captured legacy table headers/totals and no personal records"
+  ],
+  "limitations": [
+    "No live task record was captured",
+    "Backend responses are simulated",
+    "Navigation is the captured student role; other roles remain unverified",
+    "One desktop viewport and student role"
+  ]
+}

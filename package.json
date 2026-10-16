@@ -1,7 +1,7 @@
 {
   "name": "ccxp-lite",
   "private": true,
-  "version": "1.9.0",
+  "version": "1.12.0",
   "description": "A minimalism theme plugin for NTHU CCXP.",
   "packageManager": "bun@1.3.9",
   "engines": {
@@ -14,20 +14,28 @@
     "sign:firefox": "bun run build:firefox && bun run scripts/sign_firefox.ts",
     "clean": "rm -rf dist .build",
     "capture": "bun run scripts/capture_marketing_images.ts",
-    "update:readme-assets": "bun run scripts/update_readme_assets.ts",
-    "release": "release-it --config release-it.config.cjs",
-    "release:crx": "release-it --config release-it.crx.config.cjs",
-    "release:firefox": "release-it --config release-it.firefox.config.cjs",
-    "test": "bunx vitest run",
-    "test:unit": "bunx vitest run",
-    "test:vitest": "bunx vitest run",
+    "update:readme-assets": "bun run scripts/update_readme_assets.ts && bun run build:readme-comparisons",
+    "build:readme-comparisons": "bun run scripts/build_readme_comparisons.ts",
+    "release": "release-it --config config/release/release-it.config.cjs",
+    "release:crx": "release-it --config config/release/release-it.crx.config.cjs",
+    "release:firefox": "release-it --config config/release/release-it.firefox.config.cjs",
+    "test": "bun run design:build && bunx vitest run",
+    "test:browser-parity": "bun build scripts/browser-parity.ts --target=node --packages=external --outfile .build/browser-parity.mjs && node .build/browser-parity.mjs",
+    "test:unit": "bun run design:build && bunx vitest run",
+    "test:vitest": "bun run design:build && bunx vitest run",
     "lint": "bunx eslint .",
     "lint:fix": "bunx eslint . --fix",
     "format": "bunx prettier . --write",
     "format:check": "bunx prettier . --check",
     "typecheck": "bunx tsc -b --noEmit tsconfig.json",
-    "check": "bun run typecheck && bun run lint && bun run format:check && bun run test",
-    "prepare": "husky"
+    "check": "bun run design:check && bun run typecheck && bun run lint && bun run format:check && bun run test",
+    "prepare": "husky",
+    "test:browser": "bun run build:crx && bunx vitest run --config vitest.browser.config.mts",
+    "design:build": "bun run scripts/build-design-system.mts",
+    "design:check": "bun run scripts/build-design-system.mts --check",
+    "storybook": "bun run design:build && storybook dev -p 6006 --no-open --disable-telemetry",
+    "storybook:build": "bun run design:build && storybook build --disable-telemetry",
+    "test:design": "bun run scripts/test-design-system.mts"
   },
   "lint-staged": {
     "*.{ts,tsx,js,mjs,json,md,css}": [
@@ -38,19 +46,34 @@
     ]
   },
   "devDependencies": {
+    "@ccxp-lite/tokens": "workspace:*",
+    "@ccxp-lite/ui": "workspace:*",
+    "@storybook/addon-a11y": "10.6.0",
+    "@storybook/addon-docs": "10.6.0",
+    "@storybook/html-vite": "10.6.0",
     "@types/chrome": "^0.1.24",
     "@types/node": "^24.9.1",
+    "@types/pngjs": "^6.0.5",
+    "@types/react": "19.3.0",
     "bun-types": "^1.3.9",
     "complete-lint": "^5.1.5",
     "eslint": "^9.25.1",
     "eslint-config-complete": "^4.1.4",
-    "happy-dom": "^18.0.1",
+    "happy-dom": "^20.8.9",
     "husky": "^9.1.7",
     "lint-staged": "^15.5.0",
+    "pixelmatch": "^7.2.0",
     "playwright": "^1.59.1",
+    "pngjs": "^7.0.0",
     "prettier": "^3.5.3",
+    "react": "19.3.0",
     "release-it": "^20.2.0",
+    "storybook": "10.6.0",
     "typescript": "^5.8.3",
-    "vitest": "^3.2.4"
-  }
+    "vite": "^7.3.0",
+    "vitest": "^4.1.11"
+  },
+  "workspaces": [
+    "packages/*"
+  ]
 }

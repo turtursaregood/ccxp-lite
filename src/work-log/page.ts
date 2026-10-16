@@ -1,0 +1,382 @@
+(function registerCcxpLitePe14dPatch(globalScope: typeof globalThis) {
+  const runtimeScope = globalScope as typeof globalThis & {
+    __ccxpLitePe14dPatchInstalled?: boolean;
+    toSubmit?: CcxpLiteWrappedSubmit;
+  };
+  const PAGE_FLAG = "__ccxpLitePe14dPatchInstalled";
+  const TRANSPORT_FRAME_ID = "ccxp-lite-pe14d-transport";
+  const TRANSPORT_FRAME_NAME = "ccxp-lite-pe14d-transport";
+  const STATE_STORAGE_KEY = "ccxp-lite-pe14d-submit-state";
+  const INTERCEPTED_ACTIONS: ReadonlySet<string> = new Set(["getLabInsList", "ins"]);
+  const RESTORE_TTL_MS = 30_000;
+  if (runtimeScope[PAGE_FLAG] === true) {
+    return;
+  }
+  runtimeScope[PAGE_FLAG] = true;
+  let pendingSubmission:
+    | {
+        actionName: string;
+        snapshot: CcxpLitePe14dSnapshot;
+        originalTarget: string;
+        frame: HTMLIFrameElement;
+        cleanedUp: boolean;
+      }
+    | undefined;
+  function isSupportedPage() {
+    return /^\/ccxp\/inquire\/pe\/1\/14d\/.+/i.test(globalScope.location.pathname);
+  }
+  if (!isSupportedPage()) {
+    return;
+  }
+  restorePageState();
+  installWhenReady();
+  function installWhenReady() {
+    const installAttempt = () => {
+      if (!isSupportedPage()) {
+        return;
+      }
+      const currentToSubmit = runtimeScope.toSubmit;
+      if (typeof currentToSubmit !== "function") {
+        globalScope.setTimeout(installAttempt, 150, undefined);
+        return;
+      }
+      if (currentToSubmit.__ccxpLiteWrapped === true) {
+        return;
+      }
+      const originalToSubmit = currentToSubmit;
+      const wrappedToSubmit = function wrappedToSubmit(
+        this: unknown,
+        form: HTMLFormElement,
+        actionName?: string,
+        actionValue?: string,
+      ) {
+        if (actionName === "que") {
+          return submitSearch(originalToSubmit, form, actionValue);
+        }
+        if (actionName === "del") {
+          return submitDelete(originalToSubmit, form, actionValue);
+        }
+        if (!shouldInterceptSubmission(form, actionName ?? "")) {
+          return originalToSubmit.call(this, form, actionName, actionValue);
+        }
+        return submitThroughTransport(originalToSubmit, form, actionName ?? "", actionValue);
+      };
+      wrappedToSubmit.__ccxpLiteWrapped = true;
+      wrappedToSubmit.__ccxpLiteOriginal = originalToSubmit;
+      runtimeScope.toSubmit = wrappedToSubmit;
+      globalScope.setTimeout(installAttempt, 500, undefined);
+    };
+    installAttempt();
+  }
+
+  function submitSearch(
+    originalToSubmit: CcxpLiteWrappedSubmit,
+    form: HTMLFormElement,
+    actionValue?: string,
+  ) {
+    // The host calls form.submit(), which excludes submit buttons. Keep the server action
+    // independent of the translated label, and cancel the click's second/default submission.
+    const action = globalScope.document.createElement("input");
+    action.type = "hidden";
+    action.name = "S_SUBMIT";
+    action.value = "\u67E5\u8A62(Search)";
+    form.append(action);
+    try {
+      if (originalToSubmit.call(globalScope, form, "que", actionValue) === true) {
+        globalScope.document.dispatchEvent(new Event("ccxp-lite-work-log-searched"));
+      }
+    } finally {
+      action.remove();
+    }
+    return false;
+  }
+
+  function submitDelete(
+    originalToSubmit: CcxpLiteWrappedSubmit,
+    form: HTMLFormElement,
+    actionValue?: string,
+  ) {
+    // The host calls form.submit(), which excludes submit buttons. Keep the server action
+    // independent of the translated label, and cancel the click's second/default submission.
+    const action = globalScope.document.createElement("input");
+    action.type = "hidden";
+    action.name = "S_SUBMIT";
+    action.value = "\u522A\u9664(Delete)";
+    form.append(action);
+    try {
+      originalToSubmit.call(globalScope, form, "del", actionValue);
+    } finally {
+      action.remove();
+    }
+    return false;
+  }
+
+  function shouldInterceptSubmission(_form: HTMLFormElement, actionName: string) {
+    return INTERCEPTED_ACTIONS.has(actionName);
+  }
+
+  function submitThroughTransport(
+    originalToSubmit: CcxpLiteWrappedSubmit,
+    form: HTMLFormElement,
+    actionName: string,
+    actionValue?: string,
+  ): unknown {
+    if (!pendingSubmission) {
+      startTransportSubmission(originalToSubmit, form, actionName, actionValue);
+    }
+    return false;
+  }
+
+  function startTransportSubmission(
+    originalToSubmit: CcxpLiteWrappedSubmit,
+    form: HTMLFormElement,
+    actionName: string,
+    actionValue?: string,
+  ) {
+    const transportFrame = ensureTransportFrame();
+    const snapshot = captureSnapshot(form, actionName);
+    pendingSubmission = {
+      actionName,
+      snapshot,
+      originalTarget: form.getAttribute("target") ?? "",
+      frame: transportFrame,
+      cleanedUp: false,
+    };
+    const { originalTarget } = pendingSubmission;
+    persistSnapshot(snapshot);
+    transportFrame.addEventListener("load", processTransportResponse);
+    form.setAttribute("target", TRANSPORT_FRAME_NAME);
+    const action = globalScope.document.createElement("input");
+    action.type = "hidden";
+    action.name = "S_SUBMIT";
+    action.value =
+      actionName === "ins"
+        ? "\u65B0\u589E(Add)"
+        : "\u8B80\u53D6\u300C\u52A9\u7406\u767B\u9304\u7CFB\u7D71\u300D(Loading Data)";
+    // Native form.submit() excludes submit buttons. Supply the canonical server action explicitly.
+    form.append(action);
+    try {
+      const submitted = originalToSubmit.call(globalScope, form, actionName, actionValue);
+      // Legacy validation is synchronous and returns true or undefined only after form.submit().
+      if (submitted === false) {
+        cleanupPendingSubmission();
+        clearStoredSnapshot();
+      }
+    } catch {
+      cleanupPendingSubmission();
+      if (originalTarget === "") {
+        form.removeAttribute("target");
+      } else {
+        form.setAttribute("target", originalTarget);
+      }
+    } finally {
+      action.remove();
+      globalScope.setTimeout(
+        () => {
+          if (originalTarget === "") {
+            form.removeAttribute("target");
+          } else {
+            form.setAttribute("target", originalTarget);
+          }
+        },
+        0,
+        undefined,
+      );
+    }
+  }
+
+  function ensureTransportFrame() {
+    let frame = globalScope.document.querySelector<HTMLIFrameElement>(
+      `#${CSS.escape(TRANSPORT_FRAME_ID)}`,
+    );
+    if (frame instanceof HTMLIFrameElement) {
+      return frame;
+    }
+    frame = globalScope.document.createElement("iframe");
+    frame.id = TRANSPORT_FRAME_ID;
+    frame.name = TRANSPORT_FRAME_NAME;
+    frame.setAttribute("aria-hidden", "true");
+    Object.assign(frame.style, {
+      display: "none",
+      width: "0",
+      height: "0",
+      border: "0",
+    });
+    const host = globalScope.document.documentElement;
+    host.append(frame);
+    return frame;
+  }
+
+  function captureSnapshot(form: HTMLFormElement, actionName: string): CcxpLitePe14dSnapshot {
+    const { activeElement } = globalScope.document;
+    return {
+      actionName,
+      createdAt: Date.now(),
+      pathname: globalScope.location.pathname,
+      scrollX: globalScope.scrollX,
+      scrollY: globalScope.scrollY,
+      activeName:
+        activeElement instanceof HTMLInputElement ||
+        activeElement instanceof HTMLButtonElement ||
+        activeElement instanceof HTMLSelectElement ||
+        activeElement instanceof HTMLTextAreaElement
+          ? activeElement.name
+          : "",
+      activeId: activeElement instanceof HTMLElement ? activeElement.id : "",
+      bodyScrollTop: globalScope.document.documentElement.scrollTop,
+      formId: form.id,
+    };
+  }
+
+  function persistSnapshot(snapshot: CcxpLitePe14dSnapshot) {
+    try {
+      globalScope.sessionStorage.setItem(STATE_STORAGE_KEY, JSON.stringify(snapshot));
+    } catch {
+      // Ignore storage failures on legacy browsers.
+    }
+  }
+
+  function restorePageState() {
+    const snapshot = readStoredSnapshot();
+    if (!snapshot) {
+      return;
+    }
+    clearStoredSnapshot();
+    const applyRestore = () => {
+      globalScope.scrollTo(snapshot.scrollX, snapshot.scrollY);
+      const focusTarget =
+        (snapshot.activeId === ""
+          ? undefined
+          : globalScope.document.querySelector(`#${CSS.escape(snapshot.activeId)}`)) ??
+        (snapshot.activeName === ""
+          ? undefined
+          : globalScope.document.querySelector(
+              `[name="${escapeAttributeValue(snapshot.activeName)}"]`,
+            ));
+      if (focusTarget instanceof HTMLElement && typeof focusTarget.focus === "function") {
+        focusTarget.focus({ preventScroll: true });
+      }
+    };
+    if (globalScope.document.readyState === "complete") {
+      globalScope.requestAnimationFrame(applyRestore);
+      return;
+    }
+    globalScope.addEventListener(
+      "load",
+      () => {
+        globalScope.requestAnimationFrame(applyRestore);
+      },
+      { once: true },
+    );
+  }
+
+  function readStoredSnapshot() {
+    try {
+      const rawValue = globalScope.sessionStorage.getItem(STATE_STORAGE_KEY);
+      if (rawValue === null || rawValue === "") {
+        return undefined;
+      }
+      const snapshot = JSON.parse(rawValue) as CcxpLitePe14dSnapshot;
+      if (
+        snapshot.pathname !== globalScope.location.pathname ||
+        Date.now() - snapshot.createdAt > RESTORE_TTL_MS
+      ) {
+        return undefined;
+      }
+      return snapshot;
+    } catch {
+      return undefined;
+    }
+  }
+
+  function clearStoredSnapshot() {
+    try {
+      globalScope.sessionStorage.removeItem(STATE_STORAGE_KEY);
+    } catch {
+      // Ignore storage failures on legacy browsers.
+    }
+  }
+
+  function processTransportResponse() {
+    const currentSubmission = pendingSubmission;
+    if (!currentSubmission) {
+      return;
+    }
+    if (currentSubmission.cleanedUp) {
+      return;
+    }
+    const responseDocument = currentSubmission.frame.contentDocument;
+    if (!responseDocument) {
+      fallbackToHardReload();
+      return;
+    }
+    if (responseDocument.URL === "about:blank") {
+      return;
+    }
+    try {
+      const nextTasks = responseDocument.querySelector("#trLabSerial");
+      const currentTasks = globalScope.document.querySelector("#trLabSerial");
+      if (currentSubmission.actionName === "getLabInsList" && nextTasks && currentTasks) {
+        // Loading tasks after a date blur must not reset dates, search filters, or edits made while
+        // the request was in flight by replacing the entire form/body.
+        currentTasks.replaceWith(globalScope.document.importNode(nextTasks, true));
+      } else {
+        replaceVisibleBody(responseDocument);
+      }
+      syncDocumentTitle(responseDocument);
+      restoreAfterPatchedUpdate(currentSubmission.snapshot);
+      clearStoredSnapshot();
+    } catch {
+      fallbackToHardReload();
+      return;
+    }
+    cleanupPendingSubmission();
+  }
+
+  function replaceVisibleBody(sourceDocument: Document) {
+    const nextBody = runtimeScope.document.importNode(sourceDocument.body, true);
+    runtimeScope.document.body.replaceWith(nextBody as Node);
+  }
+
+  function syncDocumentTitle(sourceDocument: Document) {
+    if (sourceDocument.title !== "") {
+      runtimeScope.document.title = sourceDocument.title;
+    }
+  }
+
+  function restoreAfterPatchedUpdate(snapshot: CcxpLitePe14dSnapshot) {
+    globalScope.requestAnimationFrame(() => {
+      globalScope.scrollTo(snapshot.scrollX, snapshot.scrollY);
+      const focusTarget =
+        (snapshot.activeId === ""
+          ? undefined
+          : globalScope.document.querySelector(`#${CSS.escape(snapshot.activeId)}`)) ??
+        (snapshot.activeName === ""
+          ? undefined
+          : globalScope.document.querySelector(
+              `[name="${escapeAttributeValue(snapshot.activeName)}"]`,
+            ));
+      if (focusTarget instanceof HTMLElement && typeof focusTarget.focus === "function") {
+        focusTarget.focus({ preventScroll: true });
+      }
+    });
+  }
+
+  function fallbackToHardReload() {
+    cleanupPendingSubmission();
+    globalScope.location.reload();
+  }
+
+  function cleanupPendingSubmission() {
+    if (!pendingSubmission) {
+      return;
+    }
+    pendingSubmission.cleanedUp = true;
+    pendingSubmission.frame.removeEventListener("load", processTransportResponse);
+    pendingSubmission = undefined;
+  }
+
+  function escapeAttributeValue(value: string | undefined): string {
+    return (value ?? "").replaceAll("\\", "\\\\").replaceAll('"', String.raw`\"`);
+  }
+})(globalThis);

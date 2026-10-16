@@ -1,3 +1,4 @@
+import { TestEvent } from "../helpers/dom-event.js";
 import { describe, expect, test, vi } from "vitest";
 import {
   createTestWindow,
@@ -7,6 +8,39 @@ import {
 } from "../helpers/module-loader.js";
 
 describe("sidebar runtime", () => {
+  test("keeps eight distinct recent functions in most-recent order", () => {
+    const { window } = createTestWindow();
+    loadModules(window, menuModulePaths);
+    const runtime = requireValue(window.CCXP_LITE.sidebarRuntime, "sidebarRuntime");
+    const favorites = requireValue(window.CCXP_LITE.sidebarFavorites, "sidebarFavorites");
+    vi.spyOn(window, "open").mockImplementation((() => undefined) as unknown as typeof window.open);
+    const listener = vi.fn<(value: undefined) => void>();
+    const unsubscribe = runtime.subscribeRecentFunctions(() => {
+      listener(undefined);
+    });
+    const links = Array.from({ length: 10 }, (_unused, index) => ({
+      id: String(index),
+      label: `Function ${index}`,
+      href: `/function-${index}`,
+      target: "_blank",
+    }));
+    for (const link of links) {
+      runtime.openLeafInNewTab(link, window.document);
+    }
+    expect(runtime.getRecentFunctionIds()).toEqual(
+      links
+        .slice(2)
+        .toReversed()
+        .map((link) => favorites.createLinkId(link)),
+    );
+    runtime.openLeafInNewTab(links[4], window.document);
+    expect(runtime.getRecentFunctionIds()[0]).toBe(favorites.createLinkId(links[4]));
+    expect(runtime.getRecentFunctionIds()).toHaveLength(8);
+    expect(listener).toHaveBeenCalledTimes(11);
+    unsubscribe();
+    runtime.openLeafInNewTab(links[0], window.document);
+    expect(listener).toHaveBeenCalledTimes(11);
+  });
   test("detects external-only routes and opens them in a new tab", () => {
     const { window } = createTestWindow();
     loadModules(window, menuModulePaths);
@@ -62,7 +96,6 @@ describe("sidebar runtime", () => {
     const document = window.document as Document;
     loadModules(window, menuModulePaths);
     const sidebarRuntime = requireValue(window.CCXP_LITE.sidebarRuntime, "sidebarRuntime");
-    const sidebarFavorites = requireValue(window.CCXP_LITE.sidebarFavorites, "sidebarFavorites");
     const destinationFrame = document.createElement("iframe");
     sidebarRuntime.activateLegacyLink(
       {
@@ -77,8 +110,40 @@ describe("sidebar runtime", () => {
     expect(destinationFrame.src).toBe("https://www.ccxp.nthu.edu.tw/grades");
     sidebarRuntime.captureInitialMainFrameUrl();
     sidebarRuntime.captureInitialMainFrameUrl();
-    expect(window.sessionStorage.getItem(sidebarFavorites.INITIAL_MAIN_URL_STORAGE_KEY)).toBe(
+    expect(window.sessionStorage.getItem(sidebarRuntime.INITIAL_MAIN_URL_STORAGE_KEY)).toBe(
       "https://www.ccxp.nthu.edu.tw/start",
     );
+  });
+
+  test("adapts visual inline priorities in embedded pages while preserving behavior styles", () => {
+    const { window } = createTestWindow();
+    const document = window.document as Document;
+    loadModules(window, menuModulePaths);
+    const sidebarRuntime = requireValue(window.CCXP_LITE.sidebarRuntime, "sidebarRuntime");
+    const destinationFrame = sidebarRuntime.createDestinationFrame(
+      document,
+      document,
+      { id: "legacy", label: "Legacy", href: "/legacy", target: "main" },
+      () => undefined,
+    );
+    document.body.append(destinationFrame);
+    const frameDocument = destinationFrame.contentDocument;
+    if (!frameDocument) {
+      throw new Error("Expected iframe document");
+    }
+    frameDocument.body.innerHTML =
+      '<div id="legacy" style="color: red !important; width: 11px !important; display: none !important">Legacy</div>';
+
+    destinationFrame.dispatchEvent(new TestEvent("load"));
+
+    const legacy = frameDocument.querySelector<HTMLElement>("#legacy");
+    if (!legacy) {
+      throw new Error("Expected legacy element");
+    }
+    expect(legacy.style.getPropertyValue("color")).toBe("red");
+    expect(legacy.style.getPropertyPriority("color")).toBe("");
+    expect(legacy.style.getPropertyPriority("width")).toBe("");
+    expect(legacy.style.getPropertyPriority("display")).toBe("important");
+    expect(frameDocument.body.classList.contains("ccxp-lite-main-skin")).toBe(true);
   });
 });

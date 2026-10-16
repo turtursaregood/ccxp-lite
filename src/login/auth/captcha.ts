@@ -8,7 +8,122 @@
   const trackEvent = shared?.trackEvent ?? (() => undefined);
   const { getLoginForm } = loginLocale;
   const CAPTCHA_AUTOFILL_TIMEOUT_MS = 5000;
+  const CAPTCHA_BIND_ATTEMPT_LIMIT = 40;
+  const CAPTCHA_BIND_RETRY_DELAY_MS = 250;
+  const CAPTCHA_INPUT_SELECTOR_BY_KIND = {
+    legacy: "input[name='passwd2']",
+    oauth: "input[name='captcha']",
+    inquire: "input[name='auth_num']",
+  } as const satisfies Record<CcxpLiteCaptchaField["kind"], string>;
   const captchaAutofillStateByDocument = new WeakMap<Document, CcxpLiteCaptchaAutofillState>();
+  const captchaAttachmentByDocument = new WeakMap<
+    Document,
+    { kind: CcxpLiteCaptchaField["kind"]; cleanup: () => void }
+  >();
+
+  function attachCaptchaAutofill(
+    targetDocument: Document,
+    expectedKind: CcxpLiteCaptchaField["kind"],
+  ) {
+    const existingAttachment = captchaAttachmentByDocument.get(targetDocument);
+    if (existingAttachment) {
+      return existingAttachment.cleanup;
+    }
+    let bindAttempts = 0;
+    let retryTimerId: number | undefined;
+    let zeroDelayTimerId: number | undefined;
+    let animationFrameId: number | undefined;
+    let stopped = false;
+    const inputSelector = CAPTCHA_INPUT_SELECTOR_BY_KIND[expectedKind];
+    const isAutofillBound = () =>
+      targetDocument.querySelector<HTMLInputElement>(inputSelector)?.form?.dataset
+        .ccxpLiteCaptchaAutofillBound === "true";
+    const observer = new MutationObserver(() => {
+      if (!tryBindAutofill()) {
+        scheduleRetry();
+      }
+    });
+    const cleanup = () => {
+      if (stopped) {
+        return;
+      }
+      stopped = true;
+      if (retryTimerId !== undefined) {
+        globalThis.clearTimeout(retryTimerId);
+        retryTimerId = undefined;
+      }
+      if (zeroDelayTimerId !== undefined) {
+        globalThis.clearTimeout(zeroDelayTimerId);
+        zeroDelayTimerId = undefined;
+      }
+      if (animationFrameId !== undefined) {
+        globalThis.cancelAnimationFrame(animationFrameId);
+        animationFrameId = undefined;
+      }
+      targetDocument.removeEventListener("DOMContentLoaded", bindAutofill);
+      observer.disconnect();
+    };
+    captchaAttachmentByDocument.set(targetDocument, { kind: expectedKind, cleanup });
+
+    function tryBindAutofill() {
+      if (stopped || isAutofillBound()) {
+        cleanup();
+        return true;
+      }
+      const state = getOrCreateCaptchaState(targetDocument, targetDocument);
+      if (state?.kind !== expectedKind) {
+        return false;
+      }
+      enableCaptchaAutofill(targetDocument, targetDocument, state);
+      if (isAutofillBound()) {
+        cleanup();
+        return true;
+      }
+      return false;
+    }
+
+    function scheduleRetry() {
+      if (stopped || retryTimerId !== undefined) {
+        return;
+      }
+      if (bindAttempts >= CAPTCHA_BIND_ATTEMPT_LIMIT) {
+        cleanup();
+        return;
+      }
+      retryTimerId = globalThis.setTimeout(
+        () => {
+          retryTimerId = undefined;
+          bindAutofill();
+        },
+        CAPTCHA_BIND_RETRY_DELAY_MS,
+        undefined,
+      );
+    }
+
+    function bindAutofill() {
+      if (stopped) {
+        return;
+      }
+      bindAttempts++;
+      if (!tryBindAutofill()) {
+        scheduleRetry();
+      }
+    }
+
+    observer.observe(targetDocument.documentElement, {
+      childList: true,
+      subtree: true,
+    });
+    animationFrameId = globalThis.requestAnimationFrame(bindAutofill);
+    zeroDelayTimerId = globalThis.setTimeout(bindAutofill, 0, undefined);
+    if (targetDocument.readyState === "loading") {
+      targetDocument.addEventListener("DOMContentLoaded", bindAutofill, { once: true });
+    } else {
+      bindAutofill();
+    }
+    return cleanup;
+  }
+
   function enableCaptchaAutofill(
     targetDocument: Document,
     rootNode: ParentNode,
@@ -339,11 +454,39 @@
     }
   }
 
+  class CaptchaSourceError extends Error {
+    override name = "CaptchaSourceError";
+  }
+
+  function validateCaptchaDownloadUrl(targetDocument: Document, captchaSrc: string) {
+    let url: URL;
+    try {
+      url = new URL(captchaSrc, targetDocument.location.href);
+    } catch {
+      throw new CaptchaSourceError("captcha-source-invalid");
+    }
+    if (
+      url.protocol !== "https:" ||
+      !["https://ccxp.nthu.edu.tw", "https://www.ccxp.nthu.edu.tw"].includes(url.origin) ||
+      url.origin !== targetDocument.location.origin ||
+      url.pathname !== "/ccxp/INQUIRE/auth_img.php" ||
+      url.username !== "" ||
+      url.password !== ""
+    ) {
+      throw new CaptchaSourceError("captcha-source-not-allowed");
+    }
+    return url;
+  }
+
   async function downloadCaptchaImageBytes(targetDocument: Document, captchaSrc: string) {
-    const captchaUrl = new URL(captchaSrc, targetDocument.location.href);
+    const captchaUrl = validateCaptchaDownloadUrl(targetDocument, captchaSrc);
+    const endpoint =
+      captchaUrl.origin === "https://ccxp.nthu.edu.tw"
+        ? "https://ccxp.nthu.edu.tw/ccxp/INQUIRE/auth_img.php"
+        : "https://www.ccxp.nthu.edu.tw/ccxp/INQUIRE/auth_img.php";
     return await fetchWithTimeout(
-      captchaUrl.toString(),
-      { credentials: "include" },
+      `${endpoint}${captchaUrl.search}${captchaUrl.hash}`,
+      { credentials: "include", redirect: "error" },
       CAPTCHA_AUTOFILL_TIMEOUT_MS,
     ).then(async (response) => {
       if (!response.ok) {
@@ -412,6 +555,9 @@
     try {
       return await downloadCaptchaImageBytes(targetDocument, captchaSrc);
     } catch (error: unknown) {
+      if (error instanceof CaptchaSourceError) {
+        throw error;
+      }
       try {
         return await waitForCaptchaImageLoad(state.image);
       } catch {
@@ -466,12 +612,11 @@
   }
   namespace.loginCaptcha = {
     CAPTCHA_AUTOFILL_TIMEOUT_MS,
+    attachCaptchaAutofill,
     enableCaptchaAutofill,
     getOrCreateCaptchaState,
     primeCaptchaAutofill,
   };
-
-  bootstrapInquireCaptchaAutofill(runtimeScope.document);
 
   function resolveCaptchaSurface(kind: CcxpLiteCaptchaField["kind"]) {
     if (kind === "oauth") {
@@ -481,90 +626,5 @@
       return "inquire";
     }
     return "login";
-  }
-
-  function bootstrapInquireCaptchaAutofill(targetDocument: Document | undefined) {
-    if (!targetDocument || !isInquireCaptchaDocument(targetDocument)) {
-      return;
-    }
-    const MAX_BIND_ATTEMPTS = 40;
-    const RETRY_DELAY_MS = 250;
-    let bindAttempts = 0;
-    let retryTimerId: number | undefined;
-
-    const stopRetry = () => {
-      if (retryTimerId !== undefined) {
-        globalThis.clearTimeout(retryTimerId);
-        retryTimerId = undefined;
-      }
-    };
-
-    const isAutofillBound = () =>
-      targetDocument.querySelector<HTMLInputElement>("input[name='auth_num']")?.form?.dataset
-        .ccxpLiteCaptchaAutofillBound === "true";
-
-    const tryBindAutofill = () => {
-      if (isAutofillBound()) {
-        stopRetry();
-        return true;
-      }
-      const state = getOrCreateCaptchaState(targetDocument, targetDocument);
-      if (!state || state.kind !== "inquire") {
-        return false;
-      }
-      enableCaptchaAutofill(targetDocument, targetDocument, state);
-      if (isAutofillBound()) {
-        stopRetry();
-        return true;
-      }
-      return false;
-    };
-
-    const scheduleRetry = () => {
-      if (bindAttempts >= MAX_BIND_ATTEMPTS) {
-        stopRetry();
-        return;
-      }
-      retryTimerId = globalThis.setTimeout(
-        () => {
-          retryTimerId = undefined;
-          bindAttempts++;
-          if (!tryBindAutofill()) {
-            scheduleRetry();
-          }
-        },
-        RETRY_DELAY_MS,
-        undefined,
-      );
-    };
-
-    const bindAutofill = () => {
-      bindAttempts++;
-      if (!tryBindAutofill()) {
-        scheduleRetry();
-      }
-    };
-
-    if (targetDocument.readyState === "loading") {
-      targetDocument.addEventListener("DOMContentLoaded", bindAutofill, {
-        once: true,
-      });
-    } else {
-      bindAutofill();
-    }
-
-    globalThis.requestAnimationFrame(bindAutofill);
-    globalThis.setTimeout(bindAutofill, 0, undefined);
-  }
-
-  function isInquireCaptchaDocument(targetDocument: Document) {
-    if (namespace.loginLocale?.isLoginPage(targetDocument) === true) {
-      return false;
-    }
-    const hostName = targetDocument.location.hostname.toLowerCase();
-    if (hostName !== "www.ccxp.nthu.edu.tw" && hostName !== "ccxp.nthu.edu.tw") {
-      return false;
-    }
-    return targetDocument.location.pathname.toLowerCase().includes("/ccxp/inquire/");
   }
 })(globalThis);

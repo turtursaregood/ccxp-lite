@@ -187,9 +187,6 @@
 
 .ccxp-lite-landing-notices .ccxp-lite-announcement-scroll-row {
   display: block;
-}
-
-.ccxp-lite-landing-notices .ccxp-lite-announcement-scroll-row {
   flex: 1 1 auto;
   min-height: 0;
 }
@@ -346,7 +343,8 @@
 
 .ccxp-lite-landing-notices .ccxp-lite-announcement-topic a {
   color: var(--ccxp-lite-type-primary-link-color) !important;
-  font-weight: var(--ccxp-lite-font-weight-regular);
+  font: inherit !important;
+  font-weight: var(--ccxp-lite-font-weight-semibold) !important;
   text-decoration: none;
   overflow-wrap: anywhere;
 }
@@ -357,7 +355,7 @@
 }
 
 .ccxp-lite-landing-notices td {
-  word-break: break-word;
+  word-break: normal;
   overflow-wrap: anywhere;
 }
 

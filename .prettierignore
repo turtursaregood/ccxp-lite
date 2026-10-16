@@ -1,6 +1,13 @@
 dist
+.build
+storybook-static
 node_modules
 .playwright-cli
 fixtures/ccxp-snapshot
 src/content.decaptcha.model.ts
-release-it*.config.cjs
+config/release/*.cjs
+
+# Preserve vendored host assets byte-for-byte.
+test/browser-fixtures/host-assets/
+# Preserve captured legacy HTML, including host markup unsupported by Prettier.
+test/browser-fixtures/*.html

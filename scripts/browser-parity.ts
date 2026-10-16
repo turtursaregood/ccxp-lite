@@ -1,0 +1,1029 @@
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  statSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { parseArgs } from "node:util";
+import path from "node:path";
+import { tmpdir } from "node:os";
+import { assertWorkLogReady, routeWorkLogFixture, workLogPath } from "./work-log-fixtures.js";
+import pixelmatch from "pixelmatch";
+import { assertHome, assertHomeFavorites, assertMenuProfile } from "./home-fixtures.js";
+import { assertSidebarCollapse } from "./sidebar-collapse-fixtures.js";
+import { assertInitialSessionTimer, assertSessionTimer } from "./session-timer-fixtures.js";
+import { recordProfileActions, setProfileMenuMode } from "./profile-fixtures.js";
+import type { BrowserContext, Frame, Page } from "playwright";
+import { chromium } from "playwright";
+import { PNG } from "pngjs";
+
+const projectRoot = process.cwd();
+const fixtureRoot = path.join(projectRoot, "test", "browser-fixtures");
+const defaultExtensionDir = path.join(projectRoot, "dist", "crx", "unpacked");
+const defaultOutputDir = path.join(projectRoot, ".browser-parity");
+const viewport = { width: 1280, height: 960 };
+const ccxpOrigin = "https://www.ccxp.nthu.edu.tw";
+const maximumPixelDifferenceRatio = 6e-5;
+
+type Probe = Readonly<{
+  name: string;
+  selector: string;
+  properties: readonly string[];
+  inlinePriorities?: readonly string[];
+}>;
+
+interface CaptureResult {
+  readonly screenshots: Readonly<Record<string, string>>;
+  readonly styles: Readonly<Record<string, unknown>>;
+  readonly searchFormBottom: number;
+}
+
+const fixtureByPath = new Map<string, string>([
+  ["/ccxp/INQUIRE/", "login.html"],
+  ["/ccxp/INQUIRE/IN_INQ_STU.php", "navigation.html"],
+  ["/ccxp/INQUIRE/index.php", "login.html"],
+  ["/ccxp/INQUIRE/JH/6/6.2/6.2.9/JH629001.php", "curriculum.html"],
+  ["/ccxp/INQUIRE/JH/6/6.2/6.2.I/JH62i001.php", "keyword.html"],
+  ["/ccxp/INQUIRE/JH/6/JH62.htm", "course-hub.html"],
+  ["/ccxp/INQUIRE/JH/B/B.2/B.2.3/JHB23001.php", "standalone.html"],
+  ["/ccxp/INQUIRE/PE/3/3000/PE30001.php", "staff-registration.html"],
+  ["/ccxp/INQUIRE/PE/3/3000/PE30003.php", "staff-history.html"],
+  ["/ccxp/INQUIRE/select_entry.php", "frameset.html"],
+  ["/ccxp/INQUIRE/top.php", "top.html"],
+  ["/ccxp/INQUIRE/xp03_m.htm", "main.html"],
+]);
+
+const visualProperties = [
+  "display",
+  "visibility",
+  "position",
+  "overflow",
+  "width",
+  "height",
+  "margin",
+  "padding",
+  "color",
+  "background-color",
+  "background-image",
+  "border",
+  "border-radius",
+  "font-family",
+  "font-size",
+  "font-weight",
+  "line-height",
+];
+
+const loginProbes: readonly Probe[] = [
+  { name: "shell", selector: ".ccxp-lite-landing-shell", properties: visualProperties },
+  {
+    name: "account",
+    selector: "input[name='account']",
+    properties: visualProperties,
+    inlinePriorities: ["width", "color"],
+  },
+  {
+    name: "password",
+    selector: "input[name='passwd']",
+    properties: visualProperties,
+    inlinePriorities: ["width", "border"],
+  },
+  {
+    name: "submit",
+    selector: "form button[type='submit'], form input[type='submit']",
+    properties: visualProperties,
+  },
+  {
+    name: "languages",
+    selector: "ul.links",
+    properties: visualProperties,
+    inlinePriorities: ["font-size", "visibility"],
+  },
+];
+
+const standaloneProbes: readonly Probe[] = [
+  {
+    name: "body",
+    selector: "body",
+    properties: visualProperties,
+    inlinePriorities: ["background-color"],
+  },
+];
+
+const sidebarProbes: readonly Probe[] = [
+  { name: "shell", selector: ".ccxp-lite-sidebar-shell", properties: visualProperties },
+  {
+    name: "search",
+    selector: ".ccxp-lite-sidebar-search-input",
+    properties: visualProperties,
+  },
+  {
+    name: "first-row",
+    selector: ".ccxp-lite-row-button, .ccxp-lite-category-card",
+    properties: visualProperties,
+  },
+];
+
+const destinationProbes: readonly Probe[] = [
+  {
+    name: "back",
+    selector: ".ccxp-lite-back-button",
+    properties: visualProperties,
+  },
+  {
+    name: "frame",
+    selector: ".ccxp-lite-destination-frame",
+    properties: visualProperties,
+  },
+];
+
+function readFixture(fileName: string) {
+  return readFileSync(path.join(fixtureRoot, fileName), "utf8");
+}
+
+function assertExtension(extensionDir: string) {
+  const manifestPath = path.join(extensionDir, "manifest.json");
+  try {
+    readFileSync(manifestPath);
+  } catch {
+    throw new Error(`Missing packaged extension manifest: ${manifestPath}`);
+  }
+}
+
+function prepareOutputDirectory(outputDir: string) {
+  if (outputDir === projectRoot || outputDir === path.parse(outputDir).root) {
+    throw new Error(`Refusing to clear unsafe output directory: ${outputDir}`);
+  }
+  if (existsSync(outputDir)) {
+    throw new Error(`Output directory already exists; choose a fresh --output path: ${outputDir}`);
+  }
+  mkdirSync(outputDir, { recursive: true });
+}
+
+function fixtureHtmlForRequest(fixtureName: string, requestUrl: URL) {
+  let html = readFixture(fixtureName);
+  if (fixtureName === "frameset.html") {
+    if (requestUrl.searchParams.has("work-log")) {
+      html = html.replace("xp03_m.htm", "PE/1/14D/PE14D1.php");
+    } else {
+      const requested = requestUrl.searchParams.get("page");
+      const destination = [...fixtureByPath].find(([, file]) => file === `${requested}.html`);
+      if (destination) {
+        html = html.replace("xp03_m.htm", destination[0]);
+      }
+    }
+  }
+  return html;
+}
+
+async function routeFixtures(context: BrowserContext): Promise<ReadonlySet<string>> {
+  const missingAssets = new Set<string>();
+  const idleClocks = new WeakMap<Frame, { url: string; idle: number; startedAt: number }>();
+  await context.route("**/*", async (route) => {
+    const requestUrl = new URL(route.request().url());
+    if (requestUrl.protocol === "chrome-extension:") {
+      await route.continue();
+      return;
+    }
+    if (requestUrl.origin === ccxpOrigin && requestUrl.pathname === "/ccxp/INQUIRE/time.php") {
+      const headerUrl = new URL(route.request().frame().url());
+      const frame = route.request().frame();
+      let clock = idleClocks.get(frame);
+      if (!clock || clock.url !== headerUrl.href) {
+        clock = {
+          url: headerUrl.href,
+          idle: Number(headerUrl.searchParams.get("fixture-idle") ?? "18"),
+          startedAt: Date.now(),
+        };
+        idleClocks.set(frame, clock);
+      }
+      await route.fulfill({
+        json: { idle: clock.idle + Math.floor((Date.now() - clock.startedAt) / 1000) },
+      });
+      return;
+    }
+    if (
+      requestUrl.origin === ccxpOrigin &&
+      requestUrl.pathname === "/ccxp/INQUIRE/JH/4/4.19/JH4j002.php"
+    ) {
+      await route.fulfill({
+        contentType: "text/html",
+        body: readFileSync(path.join(fixtureRoot, "profile-header.big5")),
+      });
+      return;
+    }
+    if (await routeWorkLogFixture(route)) {
+      return;
+    }
+    const fixtureName = fixtureByPath.get(requestUrl.pathname);
+    if (requestUrl.origin === ccxpOrigin && fixtureName !== undefined) {
+      const html = fixtureHtmlForRequest(fixtureName, requestUrl);
+      await route.fulfill({ status: 200, contentType: "text/html; charset=utf-8", body: html });
+      return;
+    }
+    if (["font", "image", "stylesheet"].includes(route.request().resourceType())) {
+      missingAssets.add(requestUrl.origin + requestUrl.pathname);
+    }
+    await route.abort("blockedbyclient");
+  });
+  return missingAssets;
+}
+
+async function stabilize(page: Page) {
+  await Promise.all(
+    page.frames().map(async (frame) => {
+      await frame.waitForFunction(() =>
+        [...document.querySelectorAll<HTMLLinkElement>('link[rel="stylesheet"]')].every(
+          (link) => link.disabled || link.sheet !== null,
+        ),
+      );
+      await frame
+        .addStyleTag({
+          content:
+            "*, *::before, *::after { animation: none !important; transition: none !important; caret-color: transparent !important; }",
+        })
+        .catch(() => undefined);
+      await frame
+        .evaluate(
+          async () =>
+            await Promise.race([
+              document.fonts.ready,
+              new Promise((resolve) => {
+                setTimeout(resolve, 2000);
+              }),
+            ]),
+        )
+        .catch(() => undefined);
+    }),
+  );
+  await page.waitForTimeout(100);
+}
+
+async function collectStyles(scope: Page | Frame, probes: readonly Probe[]) {
+  return await scope.evaluate(
+    (entries) =>
+      Object.fromEntries(
+        entries.map((probe) => {
+          const element = document.querySelector<HTMLElement>(probe.selector);
+          if (!element) {
+            throw new Error(`Missing parity probe ${probe.name}: ${probe.selector}`);
+          }
+          const computed = getComputedStyle(element);
+          return [
+            probe.name,
+            {
+              tagName: element.tagName,
+              properties: Object.fromEntries(
+                probe.properties.map((propertyName) => [
+                  propertyName,
+                  computed.getPropertyValue(propertyName),
+                ]),
+              ),
+              inlinePriorities: Object.fromEntries(
+                (probe.inlinePriorities ?? []).map((propertyName) => [
+                  propertyName,
+                  element.style.getPropertyPriority(propertyName),
+                ]),
+              ),
+            },
+          ];
+        }),
+      ),
+    probes,
+  );
+}
+
+async function capturePage(page: Page, outputPath: string) {
+  await stabilize(page);
+  await page.screenshot({
+    path: outputPath,
+    animations: "disabled",
+    caret: "hide",
+  });
+}
+
+function directoryDigest(directory: string): string {
+  const hash = createHash("sha256");
+  for (const name of readdirSync(directory, { recursive: true }).map(String).toSorted()) {
+    const file = path.join(directory, name);
+    if (statSync(file).isFile()) {
+      hash.update(name);
+      hash.update(readFileSync(file));
+    }
+  }
+  return hash.digest("hex");
+}
+
+async function captureRevision(
+  label: string,
+  extensionDir: string,
+  outputDir: string,
+  workLogOnly: boolean,
+  recordVideo: boolean,
+  expectSearchResultsChange: boolean,
+  expectSupportLinksChange: boolean,
+  expectSidebarCollapseChange: boolean,
+  expectSidebarResizeChange: boolean,
+): Promise<CaptureResult> {
+  const profileDir = path.join(tmpdir(), `ccxp-lite-parity-${label}-${process.pid}-${Date.now()}`);
+  const revisionOutputDir = path.join(outputDir, label);
+  mkdirSync(revisionOutputDir, { recursive: true });
+  const context = await chromium.launchPersistentContext(profileDir, {
+    channel: "chromium",
+    headless: true,
+    viewport,
+    locale: "zh-TW",
+    timezoneId: "Asia/Taipei",
+    colorScheme: "light",
+    reducedMotion: "reduce",
+    ...(recordVideo ? { recordVideo: { dir: revisionOutputDir, size: viewport } } : {}),
+    args: [
+      // Use consistent text edges across compositor layers in both packaged captures.
+      "--disable-lcd-text",
+      `--disable-extensions-except=${extensionDir}`,
+      `--load-extension=${extensionDir}`,
+    ],
+  });
+  const screenshots: Record<string, string> = {};
+  const styles: Record<string, unknown> = {};
+  const recordingSteps: Array<{ name: string; time: number }> = [];
+  const recordingStart = Date.now();
+  const markRecordingStep = (name: string) => {
+    recordingSteps.push({ name, time: (Date.now() - recordingStart) / 1000 });
+  };
+
+  try {
+    context.setDefaultTimeout(15_000);
+    context.setDefaultNavigationTimeout(15_000);
+    const missingAssets = await routeFixtures(context);
+    await context.addInitScript(() => {
+      try {
+        localStorage.setItem("ccxp-lite-sidebar-variant", "classic");
+      } catch {
+        // Storage is unavailable on browser-owned documents.
+      }
+    });
+    const page = context.pages()[0] ?? (await context.newPage());
+
+    async function captureWorkLogPages() {
+      process.stdout.write(`[${label}] work-log (standalone and main frame)\n`);
+      await page.goto(`${ccxpOrigin}${workLogPath}`, { waitUntil: "domcontentloaded" });
+      styles["work-log-standalone-ready"] = await assertWorkLogReady(page);
+      const standaloneWorkLog = path.join(revisionOutputDir, "work-log-standalone.png");
+      await capturePage(page, standaloneWorkLog);
+      screenshots["work-log-standalone"] = standaloneWorkLog;
+      if (recordVideo) {
+        markRecordingStep("Open Search hours");
+        await page.waitForTimeout(2000);
+      }
+      await page.locator('#ccxp-lite-work-log-sections input[value="search"]').check();
+      await page.waitForTimeout(500);
+      const searchFormBottom = await page
+        .locator("#queForm")
+        .evaluate((form) => Math.ceil(form.getBoundingClientRect().bottom));
+      if (expectSearchResultsChange) {
+        assert.equal(
+          await page.locator("#listForm").isVisible(),
+          label === "base",
+          "Initial empty results should only be visible in the base extension",
+        );
+      }
+      markRecordingStep("Before searching");
+      const initialSearch = path.join(revisionOutputDir, "work-log-search-initial.png");
+      await capturePage(page, initialSearch);
+      screenshots["work-log-search-initial"] = initialSearch;
+      if (recordVideo) {
+        await page.waitForTimeout(4500);
+        await page.locator('#queForm input[type="submit"]').hover();
+        markRecordingStep("Click Search");
+        await page.waitForTimeout(1500);
+      }
+      await page.locator('#queForm input[type="submit"]').click();
+      await page.locator('html[data-ccxp-lite-work-log-section="search"] #listForm').waitFor();
+      await page.locator("body.ccxp-lite-main-skin").waitFor();
+      await page.waitForTimeout(500);
+      if (expectSearchResultsChange && label === "head") {
+        const heading = page.locator("#listForm h2");
+        assert.equal(await heading.textContent(), "\u641C\u5C0B\u7D50\u679C");
+        assert.equal(await page.locator("#listForm .H12").isVisible(), false);
+        const typography = await heading.evaluate((element) => {
+          const section = document.querySelector("#queForm th");
+          if (!section) {
+            throw new Error("Missing section label");
+          }
+          const actual = getComputedStyle(element);
+          const expected = getComputedStyle(section);
+          return (
+            actual.fontSize === expected.fontSize &&
+            actual.fontWeight === expected.fontWeight &&
+            actual.color === expected.color
+          );
+        });
+        assert.equal(typography, true, "Results heading must match section-label typography");
+      }
+      markRecordingStep("Search completed - no matching records");
+      const emptySearch = path.join(revisionOutputDir, "work-log-search-empty.png");
+      await capturePage(page, emptySearch);
+      screenshots["work-log-search-empty"] = emptySearch;
+      // Moving the table beneath a shorter heading changes raster rounding at its edges. Compare
+      // its actual content and computed layout instead of its absolute pixel position.
+      styles["work-log-search-table"] = {
+        layout: await collectStyles(page, [
+          { name: "table", selector: "#listForm table", properties: visualProperties },
+          { name: "header", selector: "#listForm th", properties: visualProperties },
+          { name: "cell", selector: "#listForm td", properties: visualProperties },
+        ]),
+        content: await page.locator("#listForm table").textContent(),
+      };
+      if (recordVideo) {
+        await page.waitForTimeout(5000);
+        await page.locator('#ccxp-lite-work-log-nav [role="switch"]').hover();
+        markRecordingStep("Switch to English");
+        await page.waitForTimeout(1500);
+      }
+      await page.locator('#ccxp-lite-work-log-nav [role="switch"]').click();
+      if (expectSearchResultsChange && label === "head") {
+        assert.equal(await page.locator("#listForm h2").textContent(), "Search results");
+        assert.equal(await page.locator("#listForm").isVisible(), true);
+      }
+      markRecordingStep("English results heading");
+      const englishSearch = path.join(revisionOutputDir, "work-log-search-english.png");
+      await capturePage(page, englishSearch);
+      screenshots["work-log-search-english"] = englishSearch;
+      if (recordVideo) {
+        await page.waitForTimeout(5000);
+      }
+      markRecordingStep("Search demonstration ends");
+      await page.locator('#ccxp-lite-work-log-nav [role="switch"]').click();
+      await page.locator('#ccxp-lite-work-log-sections input[value="add"]').check();
+      const departmentInput = page.locator('[name="KI_SRV_ID"]');
+      await departmentInput.fill("");
+      await departmentInput.focus();
+      const departmentScreenshot = path.join(revisionOutputDir, "work-log-department-results.png");
+      await capturePage(page, departmentScreenshot);
+      screenshots["work-log-department-results"] = departmentScreenshot;
+      await departmentInput.fill("EU0A");
+      const filteredScreenshot = path.join(revisionOutputDir, "work-log-department-filtered.png");
+      await capturePage(page, filteredScreenshot);
+      screenshots["work-log-department-filtered"] = filteredScreenshot;
+      await page.goto(`${ccxpOrigin}/ccxp/INQUIRE/select_entry.php?work-log`, {
+        waitUntil: "commit",
+      });
+      await page.waitForFunction((pathname) => {
+        const frame = document.querySelector('frame[name="main"]');
+        const doc = frame
+          ? (Reflect.get(frame, "contentDocument") as Document | undefined)
+          : undefined;
+        return doc?.location.pathname === pathname;
+      }, workLogPath);
+      const mainFrame = page.frames().find((frame) => frame.url().includes(workLogPath));
+      if (!mainFrame) {
+        throw new Error("Missing work-log main frame");
+      }
+      styles["work-log-framed-ready"] = await assertWorkLogReady(mainFrame);
+      await page.waitForFunction(
+        () => document.querySelector("frameset[cols]")?.getAttribute("cols") === "324,*",
+      );
+      await mainFrame.getByRole("button", { name: "\u591A\u65E5", exact: true }).click();
+      await mainFrame
+        .locator("#ccxp-lite-batch")
+        .getByLabel("\u7D50\u675F\u65E5\u671F", { exact: true })
+        .fill("2026-09-11");
+      const multiScreenshot = path.join(revisionOutputDir, "work-log-multiday.png");
+      await capturePage(page, multiScreenshot);
+      screenshots["work-log-multiday"] = multiScreenshot;
+      styles["work-log-multiday"] = await collectStyles(mainFrame, [
+        { name: "header", selector: "#ccxp-lite-work-log-nav", properties: visualProperties },
+        { name: "note", selector: '[name="I_TASK_NOTE"]', properties: visualProperties },
+        {
+          name: "submit",
+          selector: "#insTask .ccxp-lite-action-control-primary",
+          properties: visualProperties,
+        },
+      ]);
+      await mainFrame.locator('#insForm [name="S_SUBMIT"]').click();
+      await mainFrame.waitForFunction(
+        () =>
+          document.querySelector('[role="dialog"]') !== null ||
+          document.querySelector('[role="status"]')?.textContent.includes("\u6210\u529F 2 \u7B46"),
+      );
+      const submitScreenshot = path.join(revisionOutputDir, "work-log-submit.png");
+      await capturePage(page, submitScreenshot);
+      screenshots["work-log-submit"] = submitScreenshot;
+      if (recordVideo) {
+        await page.waitForTimeout(1000);
+      }
+      return searchFormBottom;
+    }
+
+    async function captureSidebarPages() {
+      process.stdout.write(`[${label}] sidebar classic\n`);
+      await page.goto(
+        `${ccxpOrigin}/ccxp/INQUIRE/select_entry.php?ACIXSTORE=fixture&hint=123456789`,
+        {
+          waitUntil: "commit",
+        },
+      );
+      await page.waitForFunction(() => {
+        const navFrame = document.querySelector("frame[src*='IN_INQ_STU.php']");
+        const navDocument = navFrame
+          ? (Reflect.get(navFrame, "contentDocument") as Document | undefined)
+          : undefined;
+        return (
+          navDocument?.querySelector<HTMLElement>("body")?.dataset.ccxpLiteSidebarApplied === "true"
+        );
+      });
+      let navFrame = page.frames().find((frame) => frame.url().includes("IN_INQ_STU.php"));
+      if (!navFrame) {
+        throw new Error("Missing sanitized navigation frame");
+      }
+      await navFrame.locator(".ccxp-lite-sidebar-shell").waitFor();
+      await navFrame.locator(".ccxp-lite-empty-row").waitFor();
+      if (recordVideo) {
+        // Use the same settled animation/font state as the paired screenshots.
+        await stabilize(page);
+        await page.screenshot({ animations: "disabled" });
+      }
+      markRecordingStep("homepage-start");
+      if (recordVideo) {
+        await page.waitForTimeout(1500);
+      }
+      const hasHome = (await navFrame.locator("#ccxp-lite-profile-mode").count()) > 0;
+      if (hasHome) {
+        await assertHome(page, navFrame, recordVideo);
+      }
+      const classicScreenshot = path.join(revisionOutputDir, "sidebar-classic.png");
+      await capturePage(page, classicScreenshot);
+      screenshots["sidebar-classic"] = classicScreenshot;
+      styles["sidebar-classic"] = await collectStyles(navFrame, sidebarProbes);
+      if (expectSupportLinksChange) {
+        if (label === "head") {
+          assert.equal(await navFrame.locator(".ccxp-lite-sidebar-brand-partner-link").count(), 0);
+        }
+        await navFrame.locator(".ccxp-lite-profile-trigger").click();
+        await navFrame.locator("#ccxp-lite-profile-popover").waitFor({ state: "visible" });
+        if (label === "head") {
+          const links = navFrame.locator("#ccxp-lite-profile-popover .ccxp-lite-profile-link");
+          assert.equal(await links.count(), 3);
+          assert.equal(await links.first().textContent(), "ccxpLite");
+        }
+        await capturePage(page, path.join(revisionOutputDir, "profile-classic.png"));
+        if (recordVideo) {
+          markRecordingStep("profile-actions-start");
+          await recordProfileActions(page, navFrame);
+          markRecordingStep("profile-actions-end");
+        }
+        await navFrame.locator(".ccxp-lite-profile-trigger").click();
+      }
+      if (expectSidebarResizeChange && label === "head") {
+        assert.equal(await navFrame.locator(".ccxp-lite-sidebar-resize").count(), 1);
+      }
+      if ((expectSidebarCollapseChange || expectSidebarResizeChange) && label === "head") {
+        markRecordingStep("sidebar-collapse-start");
+        navFrame = await assertSidebarCollapse(
+          page,
+          navFrame,
+          revisionOutputDir,
+          capturePage,
+          recordVideo,
+        );
+        markRecordingStep("sidebar-collapse-end");
+      }
+      if ((await navFrame.locator(".ccxp-lite-session-timer-toggle").count()) > 0) {
+        await assertInitialSessionTimer(
+          page,
+          navFrame,
+          revisionOutputDir,
+          capturePage,
+          label === "head",
+        );
+        await assertSessionTimer(page, navFrame, revisionOutputDir, capturePage);
+      }
+
+      process.stdout.write(`[${label}] sidebar layered search\n`);
+      if ((await navFrame.locator("#ccxp-lite-profile-mode").count()) > 0) {
+        await navFrame.locator(".ccxp-lite-profile-trigger").click();
+        if (recordVideo) {
+          await page.waitForTimeout(1500);
+        }
+        await setProfileMenuMode(navFrame.locator("#ccxp-lite-profile-mode"), "layered");
+      } else {
+        await page.locator(".ccxp-lite-sidebar-experiment-switch").click();
+      }
+      await page.waitForFunction(
+        () => document.querySelector("frameset[cols]")?.getAttribute("cols") === "*,0",
+      );
+      await navFrame
+        .locator(".ccxp-lite-sidebar-search-input")
+        .fill("\u586B\u5BEB\u6559\u5B78\u610F\u898B\u8ABF\u67E5");
+      await navFrame.locator(".ccxp-lite-row-button, .ccxp-lite-category-card").first().waitFor();
+      const layeredScreenshot = path.join(revisionOutputDir, "sidebar-layered-search.png");
+      await capturePage(page, layeredScreenshot);
+      screenshots["sidebar-layered-search"] = layeredScreenshot;
+      styles["sidebar-layered-search"] = await collectStyles(navFrame, sidebarProbes);
+
+      if (recordVideo) {
+        await page.waitForTimeout(1500);
+      }
+      markRecordingStep("homepage-end");
+      if (hasHome) {
+        await assertMenuProfile(page, navFrame);
+      }
+      if (expectSupportLinksChange) {
+        await navFrame.locator(".ccxp-lite-profile-trigger").click();
+        await navFrame.locator("#ccxp-lite-profile-popover").waitFor({ state: "visible" });
+        await capturePage(page, path.join(revisionOutputDir, "profile-layered.png"));
+        await navFrame.locator(".ccxp-lite-profile-trigger").click();
+      }
+      process.stdout.write(`[${label}] embedded destination\n`);
+      await navFrame.locator("button[title^='\u6559\u5B78\u610F\u898B']").click();
+      await navFrame
+        .locator("button[title^='\u586B\u5BEB\u6559\u5B78\u610F\u898B\u8ABF\u67E5']")
+        .click();
+      await navFrame.locator(".ccxp-lite-destination-frame:not([hidden])").waitFor();
+      await navFrame
+        .frameLocator(".ccxp-lite-destination-frame:not([hidden])")
+        .getByText("The system is not available because it is not the period to open.", {
+          exact: false,
+        })
+        .waitFor();
+      const destinationScreenshot = path.join(revisionOutputDir, "embedded-destination.png");
+      await capturePage(page, destinationScreenshot);
+      screenshots["embedded-destination"] = destinationScreenshot;
+      styles["embedded-destination"] = await collectStyles(navFrame, destinationProbes);
+    }
+
+    async function captureGeneralPages() {
+      process.stdout.write(`[${label}] login\n`);
+      await page.goto(`${ccxpOrigin}/ccxp/INQUIRE/`, { waitUntil: "domcontentloaded" });
+      await page.locator("body[data-ccxp-lite-landing-applied='true']").waitFor();
+      const password = page.locator("input[name='passwd']");
+      await password.fill("parity-only");
+      await page.locator(".ccxp-lite-password-toggle").click();
+      if ((await password.getAttribute("type")) !== "text") {
+        throw new Error("Password visibility control did not preserve interaction behavior");
+      }
+      const loginScreenshot = path.join(revisionOutputDir, "login.png");
+      await capturePage(page, loginScreenshot);
+      screenshots.login = loginScreenshot;
+      styles.login = await collectStyles(page, loginProbes);
+
+      /* eslint-disable no-await-in-loop -- Captures navigate the same page sequentially. */
+      for (const [name, route, ready] of [
+        [
+          "staff-registration",
+          "/ccxp/INQUIRE/PE/3/3000/PE30001.php",
+          "html[data-ccxp-registration-ready='true']",
+        ],
+        ["staff-history", "/ccxp/INQUIRE/PE/3/3000/PE30003.php", "html.ccxp-staff-shell"],
+      ]) {
+        process.stdout.write(`[${label}] ${name}\n`);
+        await page.goto(`${ccxpOrigin}${route}`, { waitUntil: "domcontentloaded" });
+        await page.locator(ready).waitFor({ state: "attached" });
+        await page.locator("body.ccxp-lite-main-skin").waitFor();
+        await page.locator(".k-grid").first().waitFor();
+        const file = path.join(revisionOutputDir, `${name}.png`);
+        await capturePage(page, file);
+        screenshots[name] = file;
+        styles[name] = await collectStyles(page, [
+          { name: "grid", selector: ".k-grid", properties: visualProperties },
+        ]);
+        if (name === "staff-registration") {
+          await page.getByRole("switch", { name: "English", exact: true }).check();
+          await page.getByRole("button", { name: "Registration reminders", exact: true }).click();
+          await page.locator("#ccxp-registration-reminders").waitFor();
+          const reminders = path.join(revisionOutputDir, "staff-registration-reminders.png");
+          await capturePage(page, reminders);
+          screenshots["staff-registration-reminders"] = reminders;
+          await page
+            .getByRole("button", { name: "Registration reminders", exact: true })
+            .press("Escape");
+          await page.getByRole("switch", { name: "English", exact: true }).uncheck();
+          await page.locator(".k-grid").first().scrollIntoViewIfNeeded();
+          const records = path.join(revisionOutputDir, "staff-registration-records.png");
+          await capturePage(page, records);
+          screenshots["staff-registration-records"] = records;
+        }
+      }
+
+      for (const name of ["course-hub", "curriculum", "keyword"]) {
+        process.stdout.write(`[${label}] ${name} in main frame\n`);
+        await page.goto(`${ccxpOrigin}/ccxp/INQUIRE/select_entry.php?page=${name}`, {
+          waitUntil: "load",
+        });
+        const scope = page.frameLocator('frame[name="main"]');
+        await scope.locator("body.ccxp-lite-main-skin").waitFor();
+        await page.waitForFunction(
+          () => document.querySelector("frameset[cols]")?.getAttribute("cols") === "324,*",
+        );
+        const file = path.join(revisionOutputDir, `${name}.png`);
+        await capturePage(page, file);
+        screenshots[name] = file;
+      }
+      /* eslint-enable no-await-in-loop */
+      process.stdout.write(`[${label}] standalone\n`);
+      await page.goto(`${ccxpOrigin}/ccxp/INQUIRE/JH/B/B.2/B.2.3/JHB23001.php`, {
+        waitUntil: "domcontentloaded",
+      });
+      await page.locator("body.ccxp-lite-main-skin").waitFor();
+      const standaloneScreenshot = path.join(revisionOutputDir, "standalone.png");
+      await capturePage(page, standaloneScreenshot);
+      screenshots.standalone = standaloneScreenshot;
+      styles.standalone = await collectStyles(page, standaloneProbes);
+
+      await captureSidebarPages();
+    }
+
+    if (!workLogOnly) {
+      await captureGeneralPages();
+    }
+    const searchFormBottom = await captureWorkLogPages();
+    if (!workLogOnly) {
+      await page.goto(
+        `${ccxpOrigin}/ccxp/INQUIRE/select_entry.php?ACIXSTORE=fixture&hint=123456789`,
+        { waitUntil: "load" },
+      );
+      const nav = page.frames().find((frame) => frame.url().includes("IN_INQ_STU.php"));
+      assert.ok(nav);
+      await nav.locator(".ccxp-lite-sidebar-shell").waitFor();
+      if ((await nav.locator("#ccxp-lite-profile-mode").count()) > 0) {
+        await assertHomeFavorites(page, nav);
+      }
+    }
+    writeFileSync(
+      path.join(revisionOutputDir, "capture-manifest.json"),
+      `${JSON.stringify(
+        {
+          viewport,
+          locale: "zh-TW",
+          timezone: "Asia/Taipei",
+          extensionDigest: directoryDigest(extensionDir),
+          fixtureDigest: directoryDigest(fixtureRoot),
+          source: "test/browser-fixtures/coverage.json",
+          screenshots,
+          workLogOnly,
+          recordVideo,
+          recordingSteps,
+          pipeline:
+            "packaged extension; no injected extension modules, theme variables, or layout CSS",
+        },
+        undefined,
+        2,
+      )}\n`,
+    );
+    writeFileSync(
+      path.join(revisionOutputDir, "computed-styles.json"),
+      `${JSON.stringify(styles, undefined, 2)}\n`,
+    );
+    if (missingAssets.size > 0) {
+      throw new Error(`Missing host visual assets: ${[...missingAssets].join(", ")}`);
+    }
+    return { screenshots, styles, searchFormBottom };
+  } finally {
+    process.stdout.write(`[${label}] closing browser\n`);
+    await Promise.all(
+      context.pages().map(async (page) => {
+        await page.close();
+      }),
+    );
+    await context.close();
+    process.stdout.write(`[${label}] browser closed\n`);
+    rmSync(profileDir, { recursive: true, force: true });
+  }
+}
+
+function compareScreenshot(
+  basePath: string,
+  headPath: string,
+  diffPath: string,
+  preserveAbove?: number,
+  maskSidebar = false,
+  headerWidth = 0,
+  maskResizeHandle = false,
+) {
+  const base = PNG.sync.read(readFileSync(basePath));
+  const head = PNG.sync.read(readFileSync(headPath));
+  if (base.width !== head.width || base.height !== head.height) {
+    return { differentPixels: Number.POSITIVE_INFINITY, ratio: 1 };
+  }
+  if (preserveAbove !== undefined) {
+    // Only the results area may intentionally change. Keep the search form and navigation strict.
+    base.data.fill(0, base.width * preserveAbove * 4);
+    head.data.fill(0, head.width * preserveAbove * 4);
+  }
+  if (maskSidebar) {
+    // The sidebar and removed bottom-right mode toggle are the only allowed regions on otherwise
+    // unchanged main-frame destinations.
+    for (const png of [base, head]) {
+      for (let y = 0; y < png.height; y++) {
+        png.data.fill(0, y * png.width * 4, (y * png.width + 325) * 4);
+        if (y >= png.height - 64) {
+          png.data.fill(0, (y * png.width + png.width - 240) * 4, (y + 1) * png.width * 4);
+        }
+      }
+    }
+  }
+  // Support links move out of the header; the surrounding page remains strict.
+  for (const png of [base, head]) {
+    for (let y = 0; y < (headerWidth > 0 ? 68 : 0); y++) {
+      png.data.fill(0, y * png.width * 4, (y * png.width + headerWidth) * 4);
+    }
+  }
+  // Only the new eight-pixel resize handle may differ when it is introduced.
+  if (maskResizeHandle) {
+    for (const png of [base, head]) {
+      for (let y = 0; y < png.height; y++) {
+        png.data.fill(0, (y * png.width + 316) * 4, (y * png.width + 324) * 4);
+      }
+    }
+  }
+  const diff = new PNG({ width: base.width, height: base.height });
+  const differentPixels = pixelmatch(base.data, head.data, diff.data, base.width, base.height, {
+    includeAA: false,
+    threshold: 0.1,
+  });
+  const ratio = differentPixels / (base.width * base.height);
+  if (ratio > maximumPixelDifferenceRatio) {
+    mkdirSync(path.dirname(diffPath), { recursive: true });
+    writeFileSync(diffPath, PNG.sync.write(diff));
+  }
+  return { differentPixels, ratio };
+}
+
+function compareCaptures(
+  base: CaptureResult,
+  head: CaptureResult,
+  outputDir: string,
+  expectSearchResultsChange: boolean,
+  expectHomeChange: boolean,
+  expectSupportLinksChange: boolean,
+  expectSidebarCollapseChange: boolean,
+  expectSidebarResizeChange: boolean,
+): readonly string[] {
+  const failures: string[] = [];
+  if (base.searchFormBottom !== head.searchFormBottom) {
+    failures.push("search form boundary changed");
+  }
+  const expectedResultsViews = new Set([
+    "work-log-search-empty",
+    "work-log-search-english",
+    "work-log-search-initial",
+  ]);
+  if (
+    JSON.stringify(Object.keys(base.screenshots).toSorted()) !==
+    JSON.stringify(Object.keys(head.screenshots).toSorted())
+  ) {
+    failures.push("captured screenshot set changed");
+  }
+  const redesignedViews = new Set([
+    "embedded-destination",
+    "sidebar-classic",
+    "sidebar-layered-search",
+  ]);
+  const framedViews = new Set([
+    "course-hub",
+    "curriculum",
+    "keyword",
+    "work-log-multiday",
+    "work-log-submit",
+  ]);
+  for (const [name, basePath] of Object.entries(base.screenshots)) {
+    if (!Object.hasOwn(head.screenshots, name) || (expectHomeChange && redesignedViews.has(name))) {
+      continue;
+    }
+    const headPath = head.screenshots[name];
+    const headerChanges =
+      (expectSupportLinksChange &&
+        (name === "login" || redesignedViews.has(name) || framedViews.has(name))) ||
+      (expectSidebarCollapseChange &&
+        (name === "sidebar-classic" || name === "embedded-destination" || framedViews.has(name)));
+    const headerWidth = headerChanges ? 324 : 0;
+    const difference = compareScreenshot(
+      basePath,
+      headPath,
+      path.join(outputDir, "diff", `${name}.png`),
+      expectSearchResultsChange && expectedResultsViews.has(name)
+        ? base.searchFormBottom
+        : undefined,
+      expectHomeChange && framedViews.has(name),
+      name === "sidebar-layered-search" && headerChanges ? 520 : headerWidth,
+      expectSidebarResizeChange && (name === "sidebar-classic" || framedViews.has(name)),
+    );
+    if (difference.ratio > maximumPixelDifferenceRatio) {
+      failures.push(
+        `${name}: ${difference.differentPixels} pixels changed (${(difference.ratio * 100).toFixed(4)}%)`,
+      );
+    }
+  }
+  const normalizedStyles = (styles: CaptureResult["styles"]) =>
+    JSON.stringify(styles, (key, value: unknown) => {
+      if (!expectHomeChange) {
+        return value;
+      }
+      if (key === "sidebar-classic" || key === "sidebar-layered-search") {
+        return undefined;
+      }
+      if (key === "tagName" && value === "NAV") {
+        return "HEADER";
+      }
+      // The removed reserved scrollbar gutter widens the menu destination by 30px.
+      if (key === "embedded-destination") {
+        const probes = structuredClone(value) as Record<
+          string,
+          { properties: Record<string, string> }
+        >;
+        delete probes.frame.properties.width;
+        return probes;
+      }
+      return value;
+    });
+  if (normalizedStyles(base.styles) !== normalizedStyles(head.styles)) {
+    failures.push("computed styles or inline priorities changed");
+  }
+  return failures;
+}
+
+async function main() {
+  const { values } = parseArgs({
+    args: process.argv.slice(2).filter((arg) => arg !== "--"),
+    options: {
+      "base-extension": { type: "string", default: defaultExtensionDir },
+      "head-extension": { type: "string", default: defaultExtensionDir },
+      output: { type: "string", default: defaultOutputDir },
+      "work-log-only": { type: "boolean", default: false },
+      "record-video": { type: "boolean", default: false },
+      "expect-search-results-change": { type: "boolean", default: false },
+      "expect-home-change": { type: "boolean", default: false },
+      "expect-support-links-change": { type: "boolean", default: false },
+      "expect-sidebar-collapse-change": { type: "boolean", default: false },
+      "expect-sidebar-resize-change": { type: "boolean", default: false },
+    },
+    strict: true,
+  });
+  const baseExtensionDir = path.resolve(values["base-extension"]);
+  const headExtensionDir = path.resolve(values["head-extension"]);
+  const outputDir = path.resolve(values.output);
+  assertExtension(baseExtensionDir);
+  assertExtension(headExtensionDir);
+  prepareOutputDirectory(outputDir);
+
+  const base = await captureRevision(
+    "base",
+    baseExtensionDir,
+    outputDir,
+    values["work-log-only"],
+    values["record-video"],
+    values["expect-search-results-change"],
+    values["expect-support-links-change"],
+    values["expect-sidebar-collapse-change"],
+    values["expect-sidebar-resize-change"],
+  );
+  const head = await captureRevision(
+    "head",
+    headExtensionDir,
+    outputDir,
+    values["work-log-only"],
+    values["record-video"],
+    values["expect-search-results-change"],
+    values["expect-support-links-change"],
+    values["expect-sidebar-collapse-change"],
+    values["expect-sidebar-resize-change"],
+  );
+  if (values["expect-support-links-change"]) {
+    // Captures above validate the profile links; the browser test covers keyboard/dismissal.
+    assert.ok(existsSync(path.join(outputDir, "head", "profile-classic.png")));
+  }
+  const failures = compareCaptures(
+    base,
+    head,
+    outputDir,
+    values["expect-search-results-change"],
+    values["expect-home-change"],
+    values["expect-support-links-change"],
+    values["expect-sidebar-collapse-change"],
+    values["expect-sidebar-resize-change"],
+  );
+  writeFileSync(
+    path.join(outputDir, "report.json"),
+    `${JSON.stringify({ baseExtensionDir, headExtensionDir, expectSidebarResizeChange: values["expect-sidebar-resize-change"], expectHomeChange: values["expect-home-change"], expectSupportLinksChange: values["expect-support-links-change"], expectSearchResultsChange: values["expect-search-results-change"], searchFormBottom: base.searchFormBottom, failures }, undefined, 2)}\n`,
+  );
+  if (failures.length > 0) {
+    if (process.env.ALLOW_VISUAL_CHANGE === "true") {
+      process.stdout.write(`Visual differences acknowledged:\n${failures.join("\n")}\n`);
+      return;
+    }
+    const failureDetails = failures.map((failure) => `- ${failure}`).join("\n");
+    throw new Error(`Browser parity failed:\n${failureDetails}`);
+  }
+  process.stdout.write("Browser parity passed for screenshots and computed styles.\n");
+}
+
+// eslint-disable-next-line unicorn/prefer-top-level-await
+main().catch((error: unknown) => {
+  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.exitCode = 1;
+});

@@ -24,6 +24,7 @@
         "assets/*",
         "content.css",
         "shared/content.css",
+        "shared/ui/*.css",
         "login/content.css",
         "login/host/*.css",
         "login/primitives/*.css",
@@ -34,8 +35,17 @@
         "menu/primitives/*.css",
         "menu/components/*.css",
         "menu/variants/*.css",
-        "pe14d/page.js"
+        "work-log/page.js",
+        "menu/session-clock.js",
+        "work-log/batch.js",
+        "shared/design-tokens.js",
+        "shared/constants.js",
+        "shared/ui/library.js"
       ],
+      "matches": ["https://www.ccxp.nthu.edu.tw/*", "https://ccxp.nthu.edu.tw/*"]
+    },
+    {
+      "resources": ["staff-history/page.js"],
       "matches": ["https://www.ccxp.nthu.edu.tw/*", "https://ccxp.nthu.edu.tw/*"]
     }
   ],
@@ -47,28 +57,50 @@
       ],
       "run_at": "document_start",
       "js": [
+        "shared/design-tokens.js",
         "shared/constants.js",
         "shared/theme.js",
         "shared/locale.js",
+        "shared/ui/library.js",
         "shared/brand.js",
         "shared/dom.js",
+        "shared/ui/legacy-style.js",
         "shared/analytics.js",
+        "shared/ui/loading.js",
+        "shared/ui/language.js",
         "menu/model/state.js",
         "menu/model/favorites.js",
         "menu/model/data.js",
         "menu/runtime.js",
-        "menu/ui/index.js",
+        "menu/ui/dialog-controller.js",
+        "menu/ui/session-timer.js",
+        "menu/ui/overlays.js",
+        "menu/ui/favorites.js",
+        "menu/ui/navigation-adapter.js",
+        "menu/ui/navigation.js",
+        "menu/ui/destination.js",
+        "menu/ui/views.js",
+        "menu/ui/ordering.js",
+        "menu/ui/controller.js",
         "menu/ui/bootstrap.js",
+        "shared/decaptcha.js",
         "login/auth/decaptcha.model.js",
         "login/auth/decaptcha.js",
         "inquire/decaptcha.model.js",
         "inquire/decaptcha.js",
         "login/locale.js",
+        "login/ui/links.js",
+        "login/ui/notice-view.js",
+        "login/ui/notices.js",
         "login/ui/support.js",
         "login/auth/validation.js",
         "login/auth/captcha.js",
         "inquire/captcha.js",
         "login/ui/tabs.js",
+        "login/ui/form-adapter.js",
+        "login/ui/fields.js",
+        "login/ui/password.js",
+        "login/ui/actions.js",
         "login/ui/login.js",
         "login/pipeline/identify.js",
         "login/pipeline/rewrite.js",
@@ -83,7 +115,9 @@
         "https://ccxp.nthu.edu.tw/ccxp/INQUIRE/PE/1/14D/*"
       ],
       "run_at": "document_start",
-      "js": ["pe14d/content.js"]
+      "js": ["shared/ui/library.js", "work-log/locale.js", "work-log/content.js"],
+      "all_frames": true,
+      "css": ["work-log/content.css"]
     },
     {
       "matches": ["https://oauth.ccxp.nthu.edu.tw/v1.1/authorize.php*"],
@@ -91,12 +125,38 @@
       "js": [
         "shared/dom.js",
         "shared/analytics.js",
+        "shared/decaptcha.js",
         "oauth/decaptcha.model.js",
         "oauth/decaptcha.js",
         "login/locale.js",
         "login/auth/captcha.js",
         "oauth/captcha.js"
       ]
+    },
+    {
+      "matches": [
+        "https://www.ccxp.nthu.edu.tw/ccxp/INQUIRE/PE/3/3000/PE30003.php*",
+        "https://ccxp.nthu.edu.tw/ccxp/INQUIRE/PE/3/3000/PE30003.php*"
+      ],
+      "run_at": "document_idle",
+      "js": ["staff-history/content.js", "staff-history/shell.js"],
+      "css": ["staff-history/shell.css"]
+    },
+    {
+      "matches": [
+        "https://www.ccxp.nthu.edu.tw/ccxp/INQUIRE/PE/3/3000/PE30001.php*",
+        "https://ccxp.nthu.edu.tw/ccxp/INQUIRE/PE/3/3000/PE30001.php*"
+      ],
+      "run_at": "document_idle",
+      "js": ["staff-registration/content.js"]
+    },
+    {
+      "matches": [
+        "https://www.ccxp.nthu.edu.tw/ccxp/INQUIRE/PE/3/3000/PE30001.php*",
+        "https://ccxp.nthu.edu.tw/ccxp/INQUIRE/PE/3/3000/PE30001.php*"
+      ],
+      "run_at": "document_start",
+      "css": ["staff-registration/startup.css", "staff-registration/content.css"]
     }
   ]
 }

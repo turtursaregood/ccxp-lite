@@ -1,6 +1,11 @@
 (function registerCcxpLiteSidebarBootstrap(globalScope: typeof globalThis) {
   const runtimeScope = globalScope;
   const namespace = runtimeScope.CCXP_LITE ?? {};
+  if (!namespace.uiButtons || !namespace.uiRenderer) {
+    return;
+  }
+  const { createButton } = namespace.uiButtons;
+  const { createRenderer } = namespace.uiRenderer;
   const { shared, sidebarFavorites, sidebarData, sidebarState, sidebarUi, sidebarRuntime } =
     namespace;
   if (
@@ -23,13 +28,11 @@
     resolveLocaleFromDocument,
     createBrandImage,
     createBrandCopy,
-    createBrandPartnerLink,
     isDocumentComplete,
     cleanLegacyAttributes,
   } = shared;
-  const { ensureFavoriteStorageSync, ensureFavoriteIdsLoaded, subscribeToFavoriteChanges } =
-    sidebarFavorites;
-  const { buildSidebarModel, parseSidebarTree } = sidebarData;
+  const { initializeFavorites } = sidebarFavorites;
+  const { buildSidebarModel } = sidebarData;
   const { getSidebarUiState } = sidebarState;
   const { renderSidebar, createSidebarSearch, syncTopLevelFramesetLayout } = sidebarUi;
   const { captureInitialMainFrameUrl } = sidebarRuntime;
@@ -41,10 +44,6 @@
       unsubscribeFavorites: (() => void) | undefined;
     }
   >();
-
-  function isArray<T>(value: unknown): value is T[] {
-    return value !== null && typeof value === "object" && value.constructor === Array;
-  }
 
   function simplifySidebar(
     navFrame: HTMLIFrameElement,
@@ -71,19 +70,21 @@
       return;
     }
 
-    const rawTree = parseSidebarTree(navDocument);
-    if (!rawTree || !isArray(rawTree.children)) {
-      retry();
-      return;
-    }
-
     ensureThemeDocument(navDocument, "nav");
     ensureThemeDocument(hostDocument, "nav");
     const strings = getLocalizedStrings(resolveLocaleFromDocument(navDocument));
+    const model = buildSidebarModel(navDocument, strings);
+    if (!model) {
+      retry();
+      return;
+    }
     const state = getSidebarUiState(hostDocument);
     const rerenderBinding = getOrCreateRerenderBinding(hostDocument);
     captureInitialMainFrameUrl();
-    syncTopLevelFramesetLayout(state.sidebarVariant);
+    syncTopLevelFramesetLayout(
+      state.sidebarVariant,
+      state.sidebarCollapsed && !state.sidebarPreview,
+    );
     const hostBody = ensureDocumentBody(hostDocument);
 
     if (!hostBody) {
@@ -93,18 +94,12 @@
 
     if (hostBody.dataset.ccxpLiteSidebarApplied !== "true") {
       const helperFrame = navDocument.querySelector<HTMLIFrameElement>("iframe[name='frame_7472']");
-      const shell = hostDocument.createElement("div");
-      shell.className = `${TOKENS.sidebarClass} ccxp-lite-app-shell`;
+      const dom = createRenderer(hostDocument);
+      const brandGroup = dom.element("div", { className: "ccxp-lite-sidebar-brand-group" });
 
-      const header = hostDocument.createElement("div");
-      header.className = "ccxp-lite-sidebar-header";
-
-      const brandGroup = hostDocument.createElement("div");
-      brandGroup.className = "ccxp-lite-sidebar-brand-group";
-
-      const brand = hostDocument.createElement("button");
-      brand.type = "button";
-      brand.className = "ccxp-lite-sidebar-brand ccxp-lite-sidebar-brand-button";
+      const brand = createButton(hostDocument, {
+        className: "ccxp-lite-sidebar-brand ccxp-lite-sidebar-brand-button",
+      });
       brand.setAttribute("aria-label", strings.sidebarResetHome);
       brand.setAttribute("title", strings.sidebarResetHome);
       brand.append(
@@ -119,30 +114,22 @@
         ),
       );
 
-      const { link: repoLink } = createBrandPartnerLink(hostDocument, {
-        linkClassName: "ccxp-lite-sidebar-brand-partner-link",
-        iconWrapClassName: "ccxp-lite-sidebar-brand-partner-mark",
-        copyClassName: "ccxp-lite-sidebar-brand-partner-copy",
-        labelClassName: "ccxp-lite-sidebar-brand-partner-label",
-        label: strings.sidebarGitHubLink,
-      });
-
       const search = createSidebarSearch(hostDocument, strings);
 
-      const content = hostDocument.createElement("main");
-      content.className = "ccxp-lite-sidebar-content";
+      dom.append(brandGroup, brand);
+      const shell = dom.element(
+        "div",
+        { className: `${TOKENS.sidebarClass} ccxp-lite-app-shell` },
+        [
+          dom.element("div", { className: "ccxp-lite-sidebar-header" }, [brandGroup, search]),
+          dom.element("main", { className: "ccxp-lite-sidebar-content" }),
+        ],
+      );
 
-      const footer = hostDocument.createElement("footer");
-      footer.className = "ccxp-lite-sidebar-footer";
-
-      brandGroup.append(brand);
-      brandGroup.append(repoLink);
-      header.append(brandGroup);
-      header.append(search);
-      shell.append(header);
-      shell.append(content);
-      shell.append(footer);
-
+      const logout = navDocument.querySelector<HTMLAnchorElement>('a[href*="logout.php"]');
+      if (logout) {
+        shell.dataset.ccxpLiteLogoutUrl = logout.href;
+      }
       cleanLegacyAttributes(shell);
       hostBody.replaceChildren(shell);
 
@@ -155,11 +142,16 @@
         const uiState = getSidebarUiState(hostDocument);
         uiState.currentCategoryId = "";
         uiState.activeLeaf = undefined;
+        const mainFrame =
+          hostDocument.defaultView?.top?.document.querySelector<HTMLIFrameElement>(
+            'frame[name="main"]',
+          );
+        if (mainFrame) {
+          const home = new URL("xp03_m.htm", navDocument.location.href);
+          home.search = navDocument.location.search;
+          mainFrame.src = home.href;
+        }
         rerenderBinding.render?.();
-      });
-
-      repoLink.addEventListener("click", () => {
-        window.open("https://github.com/NTHU-SA/ccxpLite", "_blank", "noopener,noreferrer");
       });
 
       hostBody.dataset.ccxpLiteSidebarApplied = "true";
@@ -169,16 +161,12 @@
       renderSidebar(
         hostDocument,
         navDocument,
-        () => buildSidebarModel(rawTree, navDocument, strings),
+        () => buildSidebarModel(navDocument, strings) ?? model,
         strings,
       );
     };
-    ensureFavoriteStorageSync();
     rerenderBinding.unsubscribeFavorites?.();
-    rerenderBinding.unsubscribeFavorites = subscribeToFavoriteChanges(
-      rerenderBinding.boundRerender,
-    );
-    ensureFavoriteIdsLoaded(rerenderBinding.boundRerender);
+    rerenderBinding.unsubscribeFavorites = initializeFavorites(rerenderBinding.boundRerender);
     rerenderBinding.boundRerender();
   }
 

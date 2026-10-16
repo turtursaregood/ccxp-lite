@@ -1,6 +1,10 @@
 (function registerCcxpLiteSharedBrand(globalScope: typeof globalThis) {
   const runtimeScope = globalScope;
   const namespace = runtimeScope.CCXP_LITE ?? {};
+  if (!namespace.uiButtons) {
+    return;
+  }
+  const { createButton } = namespace.uiButtons;
   const { sharedConstants, sharedLocale } = namespace;
   if (!sharedConstants || !sharedLocale) {
     return;
@@ -8,6 +12,24 @@
 
   const { ASSETS } = sharedConstants;
   const { getLocalizedStrings, resolveLocaleFromDocument } = sharedLocale;
+
+  function createSupportLinks(targetDocument: Document): readonly HTMLAnchorElement[] {
+    const english = resolveLocaleFromDocument(targetDocument) === "en";
+    return [
+      ["ccxpLite", "https://github.com/sago-cream/ccxp-lite"],
+      [
+        english ? "Report an issue" : "\u554F\u984C\u56DE\u5831",
+        "https://docs.google.com/forms/d/e/1FAIpQLSeVG1MazLdDLtuTnYjWoathrmsERmYPgiPrUNgLyBMJ3vvrxA/viewform",
+      ],
+    ].map(([label, href]) => {
+      const link = targetDocument.createElement("a");
+      link.textContent = label;
+      link.href = href;
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      return link;
+    });
+  }
 
   function createBrandImage(
     targetDocument: Document,
@@ -84,9 +106,7 @@
       label?: string;
     } = {},
   ) {
-    const link = targetDocument.createElement("button");
-    link.type = "button";
-    link.className = options.linkClassName ?? "";
+    const link = createButton(targetDocument, { className: options.linkClassName ?? "" });
     link.setAttribute("aria-label", options.label ?? "");
     link.setAttribute("title", options.label ?? "");
 
@@ -108,6 +128,7 @@
   }
 
   namespace.sharedBrand = {
+    createSupportLinks,
     createBrandImage,
     createBrandCopy,
     createBrandPartnerIcon,
