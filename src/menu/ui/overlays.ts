@@ -228,9 +228,7 @@
       [
         createCategoryIcon(targetDocument, isDarkTheme ? "sun" : "moon"),
         dom.element("span", {
-          text: isDarkTheme
-            ? (strings.themeSwitchToLight ?? (english ? "Switch to light theme" : "\u5207\u63DB\u70BA\u6DFA\u8272\u4E3B\u984C"))
-            : (strings.themeSwitchToDark ?? (english ? "Switch to dark theme" : "\u5207\u63DB\u70BA\u6DF1\u8272\u6A21\u5F0F")),
+          text: isDarkTheme ? strings.themeSwitchToLight : strings.themeSwitchToDark,
         }),
       ],
     );
@@ -444,11 +442,163 @@
         avatar.textContent = profile.initials;
       })
       .catch(() => undefined);
+
+    const isClassic = state.sidebarVariant === "classic";
+    const scopeDocument = resolveClassicOverlayScopeDocument(targetDocument, isClassic);
+    const floatingThemeButton = createFloatingThemeSwitch(scopeDocument, strings, rerender);
+    floatingThemeButton.dataset.ccxpLiteSidebarThemeSwitch = "true";
+    Object.assign(floatingThemeButton.style, {
+      position: "relative",
+      pointerEvents: "auto",
+    });
+
+    if (isClassic && scopeDocument !== targetDocument) {
+      const mountNode = getClassicMainFrameOverlayMountNode(scopeDocument);
+      mountNode.append(floatingThemeButton);
+    } else {
+      const mountNode = getOverlayMountNode(targetDocument);
+      mountNode.append(floatingThemeButton);
+    }
+  }
+
+  function createFloatingThemeSwitch(
+    targetDocument: Document,
+    strings: Readonly<Record<string, string>>,
+    rerender: () => void,
+  ): HTMLElement {
+    const theme = app.sharedTheme?.getPersistedTheme() ?? "light";
+    const isDark = theme === "dark";
+    const button = targetDocument.createElement("button");
+    button.type = "button";
+    button.className = "ccxp-lite-sidebar-theme-switch";
+    button.dataset.ccxpLiteThemeMode = theme;
+
+    const labelText = isDark ? strings.themeSwitchToLight : strings.themeSwitchToDark;
+    button.setAttribute("aria-label", labelText);
+    button.setAttribute("title", labelText);
+
+    const iconWrap = targetDocument.createElement("span");
+    iconWrap.className = "ccxp-lite-sidebar-theme-icon";
+    Object.assign(iconWrap.style, {
+      display: "inline-flex",
+      alignItems: "center",
+      justifyContent: "center",
+      width: "20px",
+      height: "20px",
+    });
+
+    iconWrap.append(createCategoryIcon(targetDocument, isDark ? "sun" : "moon"));
+
+    const copy = targetDocument.createElement("span");
+    copy.className = "ccxp-lite-sidebar-theme-label";
+    copy.textContent = strings.themeLabel;
+
+    const status = targetDocument.createElement("span");
+    status.className = "ccxp-lite-sidebar-theme-state";
+    status.setAttribute("aria-hidden", "true");
+    status.textContent = isDark ? strings.themeOn : strings.themeOff;
+
+    button.append(iconWrap);
+    button.append(copy);
+    button.append(status);
+
+    button.addEventListener("click", () => {
+      const nextTheme = theme === "light" ? "dark" : "light";
+      app.sharedTheme?.setPersistedTheme(nextTheme);
+      app.sharedTheme?.updateAllFramesTheme();
+      rerender();
+    });
+
+    return button;
+  }
+
+  function resolveClassicOverlayScopeDocument(
+    targetDocument: Document,
+    isClassic: boolean,
+  ): Document {
+    if (!isClassic) {
+      return targetDocument;
+    }
+
+    try {
+      const scopeDocument = targetDocument.defaultView?.top?.document;
+      if (!scopeDocument) {
+        return targetDocument;
+      }
+
+      app.sharedTheme?.ensureThemeDocument(scopeDocument, "nav");
+      return scopeDocument;
+    } catch {
+      return targetDocument;
+    }
+  }
+
+  function getClassicMainFrameOverlayMountNode(targetDocument: Document): HTMLElement {
+    const targetRoot = targetDocument.documentElement;
+    let anchor = targetDocument.querySelector<HTMLElement>(
+      "[data-ccxp-lite-main-frame-overlay-anchor='true']",
+    );
+    if (!anchor) {
+      anchor = targetDocument.createElement("div");
+      anchor.dataset.ccxpLiteMainFrameOverlayAnchor = "true";
+      targetRoot.append(anchor);
+    }
+
+    syncClassicMainFrameOverlayPosition(targetDocument, anchor);
+    return anchor;
+  }
+
+  function syncClassicMainFrameOverlayPosition(targetDocument: Document, anchor: HTMLElement) {
+    const mainFrame = targetDocument.querySelector<HTMLElement>("frame[name='main']");
+    const view = targetDocument.defaultView;
+    if (!mainFrame || !view) {
+      Object.assign(anchor.style, {
+        position: "fixed",
+        insetInlineEnd: "var(--ccxp-lite-spacing-lg)",
+        insetBlockEnd: "var(--ccxp-lite-spacing-lg)",
+      });
+      return;
+    }
+
+    const rect = mainFrame.getBoundingClientRect();
+    const inlineOffset = Math.max(0, view.innerWidth - rect.right);
+    const blockOffset = Math.max(0, view.innerHeight - rect.bottom);
+    Object.assign(anchor.style, {
+      position: "fixed",
+      insetInlineEnd: `calc(var(--ccxp-lite-spacing-lg) + ${inlineOffset}px)`,
+      insetBlockEnd: `calc(var(--ccxp-lite-spacing-lg) + ${blockOffset}px)`,
+      zIndex: "2147483646",
+      display: "flex",
+      flexDirection: "column",
+      gap: "var(--ccxp-lite-spacing-sm)",
+      alignItems: "flex-end",
+      justifyContent: "flex-end",
+      pointerEvents: "none",
+    });
+  }
+
+  function getOverlayMountNode(targetDocument: Document): HTMLElement {
+    const anchorHost =
+      targetDocument.querySelector<HTMLElement>(
+        ".ccxp-lite-sidebar-content .ccxp-lite-dashboard-shell",
+      ) ??
+      targetDocument.querySelector<HTMLElement>(".ccxp-lite-sidebar-content .ccxp-lite-pane") ??
+      targetDocument.body;
+    anchorHost.dataset.ccxpLiteFloatingAnchorHost = "true";
+    let anchor = anchorHost.querySelector<HTMLElement>("[data-ccxp-lite-floating-anchor='true']");
+    if (!anchor) {
+      anchor = targetDocument.createElement("div");
+      anchor.dataset.ccxpLiteFloatingAnchor = "true";
+      anchorHost.append(anchor);
+    }
+
+    return anchor;
   }
 
   function removeExistingSidebarVariantSwitches(documents: ReadonlyArray<Document | undefined>) {
     const selectors = [
       "[data-ccxp-lite-sidebar-lab-switch]",
+      "[data-ccxp-lite-sidebar-theme-switch]",
       ".ccxp-lite-sidebar-experiment-copy",
       "[data-ccxp-lite-floating-anchor='true']",
       "[data-ccxp-lite-main-frame-overlay-anchor='true']",

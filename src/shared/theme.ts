@@ -101,6 +101,7 @@
       "--ccxp-lite-skeleton-highlight-strong": tokens.colorSkeletonHighlightStrong,
     };
   }
+
   function applyCssVariables(
     targetElement: HTMLElement,
     variables: Readonly<Record<string, string>>,

@@ -213,7 +213,7 @@
     const footer = targetDocument.createElement("footer");
     footer.className = "ccxp-lite-landing-footer";
     for (const link of createSupportLinks(targetDocument)) {
-      if (link.textContent !== "ccxpLite") {
+      if (!link.textContent.startsWith("ccxpLite")) {
         link.textContent = `ccxpLite ${link.textContent}`;
       }
       footer.append(link);

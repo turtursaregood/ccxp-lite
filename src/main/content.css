@@ -381,14 +381,13 @@ body.ccxp-lite-main-skin[data-ccxp-lite-sidebar-variant="classic"] {
   scrollbar-gutter: stable both-edges;
 }
 
-<<<<<<< HEAD
 /* General dark mode form controls styles */
 html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"]
   input:not([type="submit"]):not([type="button"]):not([type="reset"]):not([type="checkbox"]):not(
     [type="radio"]
-  ),
-html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] select,
-html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] textarea {
+  ):not([type="search"]):not([class*="ccxp-"]):not(.ccxp-home-search > input),
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] select:not([class*="ccxp-"]),
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] textarea:not([class*="ccxp-"]) {
   background: var(--ccxp-lite-surface-muted) !important;
   color: var(--ccxp-lite-text) !important;
   border: 1px solid var(--ccxp-lite-border) !important;
@@ -397,7 +396,8 @@ html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] textarea {
 html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] input[type="submit"],
 html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] input[type="button"],
 html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] input[type="reset"],
-html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] button {
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"]
+  button:not([class*="ccxp-"]):not(.ccxp-lite-account-guide-info-button) {
   background: var(--ccxp-lite-surface) !important;
   color: var(--ccxp-lite-text) !important;
   border: 1px solid var(--ccxp-lite-border) !important;
@@ -406,9 +406,107 @@ html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] button {
 
 html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] input[type="submit"]:hover,
 html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] input[type="button"]:hover,
-html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] button:hover {
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"]
+  button:not([class*="ccxp-"]):not(.ccxp-lite-account-guide-info-button):hover {
   background: var(--ccxp-lite-primary-hover-surface) !important;
   border-color: var(--ccxp-lite-primary) !important;
+}
+
+/* Page header popover guide / instructions button reset in dark mode */
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] .ccxp-lite-account-guide-info-button,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"]
+  .ccxp-lite-page-header
+  .ccxp-lite-account-guide-info
+  > button {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--ccxp-lite-text-muted) !important;
+}
+
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"]
+  .ccxp-lite-account-guide-info-button:hover,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"]
+  .ccxp-lite-page-header
+  .ccxp-lite-account-guide-info
+  > button:hover {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--ccxp-lite-text) !important;
+}
+
+/* Home search input reset in dark mode (removes rectangular box inside pill) */
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] .ccxp-home-search > input {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--ccxp-lite-text) !important;
+}
+
+/* Home search clear button reset in dark mode */
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] .ccxp-home-search-clear {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--ccxp-lite-text-muted) !important;
+}
+
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] .ccxp-home-search-clear:hover {
+  background: var(--ccxp-lite-surface-muted) !important;
+  border: 0 !important;
+}
+
+/* Home search results items reset in dark mode */
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] .ccxp-home-search-result {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--ccxp-lite-text) !important;
+}
+
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] .ccxp-home-search-result:hover,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"]
+  .ccxp-home-search-result:focus-visible {
+  background: var(--ccxp-lite-surface-muted) !important;
+  border: 0 !important;
+}
+
+/* Home show-all link button reset in dark mode */
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] .ccxp-home-show-all {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--ccxp-lite-primary) !important;
+}
+
+/* Home card favorite star toggle button reset in dark mode */
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] .ccxp-lite-favorite-toggle {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  color: var(--ccxp-lite-text-muted) !important;
+}
+
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] .ccxp-lite-favorite-toggle:hover,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"]
+  .ccxp-lite-favorite-toggle:focus-visible {
+  background: transparent !important;
+  border: 0 !important;
+  color: var(--ccxp-lite-brand) !important;
+}
+
+/* Home card icon background in dark mode */
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] .ccxp-home-card-icon {
+  background: color-mix(in srgb, var(--ccxp-lite-primary) 15%, var(--ccxp-lite-surface)) !important;
+  color: var(--ccxp-lite-primary) !important;
+}
+
+/* Popover popup background and border in dark mode */
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] .ccxp-lite-account-guide-info-popup {
+  background: var(--ccxp-lite-surface) !important;
+  border: 1px solid var(--ccxp-lite-border) !important;
+  color: var(--ccxp-lite-text) !important;
 }
 
 /* General dark mode page background and text color */
@@ -428,16 +526,16 @@ html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] a {
 
 /* Reset legacy inline bgcolors, background styles, and font colors which ruin dark mode */
 html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] *[bgcolor],
-html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] table,
-html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] tr,
-html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] td,
-html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] th,
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] table:not([class*="ccxp-"]),
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] tr:not([class*="ccxp-"]),
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] td:not([class*="ccxp-"]),
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] th:not([class*="ccxp-"]),
 html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] font,
-html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] span,
-html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] p,
-html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] ul,
-html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] ol,
-html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] li {
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] span:not([class*="ccxp-"]),
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] p:not([class*="ccxp-"]),
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] ul:not([class*="ccxp-"]),
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] ol:not([class*="ccxp-"]),
+html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] li:not([class*="ccxp-"]) {
   background-color: transparent !important;
   background-image: none !important;
 }
@@ -450,7 +548,6 @@ html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] *[color] {
 html[data-ccxp-lite-scope="main"][data-ccxp-lite-theme="dark"] font {
   color: inherit !important;
 }
-
 
 /* Staff History has separate, synchronized header and body tables. Keep both
    wide enough for its IDs, dates, and labels instead of squeezing every column
@@ -566,11 +663,11 @@ html[data-ccxp-lite-scope="main"] .ccxp-home-search > input {
   width: 100%;
   min-width: 0;
   height: 54px;
-  border: 0;
+  border: 0 !important;
   border-radius: 0;
   padding: 0;
-  background: transparent;
-  box-shadow: none;
+  background: transparent !important;
+  box-shadow: none !important;
   outline: none;
   font: var(--ccxp-lite-type-home-control);
 }
@@ -752,5 +849,4 @@ html[data-ccxp-lite-scope="main"] .ccxp-home-header > .ccxp-home-contact {
 .ccxp-home-search-clear:focus-visible {
   outline: 2px solid var(--ccxp-lite-primary-focus-border);
   outline-offset: 0;
->>>>>>> main
 }

@@ -17,6 +17,7 @@
     const english = resolveLocaleFromDocument(targetDocument) === "en";
     return [
       ["ccxpLite", "https://github.com/sago-cream/ccxp-lite"],
+      ["ccxpLite (dark-mode)", "https://github.com/turtursaregood/ccxp-lite/tree/dark-mode"],
       [
         english ? "Report an issue" : "\u554F\u984C\u56DE\u5831",
         "https://docs.google.com/forms/d/e/1FAIpQLSeVG1MazLdDLtuTnYjWoathrmsERmYPgiPrUNgLyBMJ3vvrxA/viewform",
